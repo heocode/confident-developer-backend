@@ -1,0 +1,623 @@
+{
+  "info": {
+    "_postman_id": "c83d6bd3-53a8-4aee-a643-c4233f6cbaf1",
+    "name": "COMP229 - Assignment 2",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "30811245"
+  },
+  "item": [
+    {
+      "name": "References",
+      "item": [
+        {
+          "name": "Create a reference",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "let jsonData = pm.response.json();\r",
+                  "pm.environment.set(\"referenceId\", jsonData.data.id);"
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"firstname\": \"Clark\",\n    \"lastname\": \"Kent\",\n    \"firstName\": \"Clark\",\n    \"lastName\": \"Kent\",\n    \"email\": \"clark.kent@dailyplanet.com\",\n    \"company\": \"Daily Planet\",\n    \"position\": \"Reporter\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "http://localhost:3000/api/references",
+              "host": [
+                "http://localhost:3000"
+              ],
+              "path": [
+                "api",
+                "references"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get all references",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "let jsonData = pm.response.json();\r",
+                  "let index = jsonData.data.length - 1;\r",
+                  "pm.environment.set(\"referenceId\", jsonData.data[index].id);"
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:3000/api/references",
+              "host": [
+                "http://localhost:3000"
+              ],
+              "path": [
+                "api",
+                "references"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get one reference",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:3000/api/references/{{referenceId}}",
+              "host": [
+                "http://localhost:3000"
+              ],
+              "path": [
+                "api",
+                "references",
+                "{{referenceId}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update one reference",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"firstname\": \"Bruce\",\n    \"lastname\": \"Wayne\",\n    \"email\": \"bruce.wayne@waynecorp.com\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "http://localhost:3000/api/references/{{referenceId}}",
+              "host": [
+                "http://localhost:3000"
+              ],
+              "path": [
+                "api",
+                "references",
+                "{{referenceId}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete one reference",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:3000/api/references/{{referenceId}}",
+              "host": [
+                "http://localhost:3000"
+              ],
+              "path": [
+                "api",
+                "references",
+                "{{referenceId}}"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Projects",
+      "item": [
+        {
+          "name": "Create a project",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "let jsonData = pm.response.json();\r",
+                  "pm.environment.set(\"projectId\", jsonData.data.id);"
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "eyJhbGciOiJIUzUxMiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY5OTkxNTU2NmI1NGVkN2U1NzRkZWI4NCIsInVzZXJuYW1lIjoiY2xhcmsua2VudCIsImlhdCI6MTc3NDY2MzUxNSwiZXhwIjoxNzc0NjY0NzE1fQ.TphYndl5O-48v9hN5nFN0jWzUdDIZROd5Jk_IYMh67XuVGKZWihiqYNurZOCFMAchshSdRtjYvnr5cwEJPqJ0Q",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"title\": \"COMP229 - Assignment 02\",\n    \"completion\": \"2025-10-31\",\n    \"description\": \"This Assignment is about backend API.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "http://localhost:3000/api/projects/",
+              "host": [
+                "http://localhost:3000"
+              ],
+              "path": [
+                "api",
+                "projects",
+                ""
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get all projects",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "let jsonData = pm.response.json();\r",
+                  "let index = jsonData.data.length - 1;\r",
+                  "pm.environment.set(\"projectId\", jsonData.data[index].id);"
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            },
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  ""
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:3000/api/projects",
+              "host": [
+                "http://localhost:3000"
+              ],
+              "path": [
+                "api",
+                "projects"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get one project",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:3000/api/projects/{{projectId}}",
+              "host": [
+                "http://localhost:3000"
+              ],
+              "path": [
+                "api",
+                "projects",
+                "{{projectId}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update one project",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"title\": \"COMP229 - Assignment 02\",\n    \"completion\": \"2025-10-31\",\n    \"description\": \"This Assignment is all about backend API. Submitted before due date.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "http://localhost:3000/api/projects/{{projectId}}",
+              "host": [
+                "http://localhost:3000"
+              ],
+              "path": [
+                "api",
+                "projects",
+                "{{projectId}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete one project",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:3000/api/projects/{{projectId}}",
+              "host": [
+                "http://localhost:3000"
+              ],
+              "path": [
+                "api",
+                "projects",
+                "{{projectId}}"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Services",
+      "item": [
+        {
+          "name": "Create a service",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "let jsonData = pm.response.json();\r",
+                  "pm.environment.set(\"serviceId\", jsonData.data.id);"
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"title\": \"Web Application Development\",\n    \"description\": \"Development of your web app using the MERN stack.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "http://localhost:3000/api/services",
+              "host": [
+                "http://localhost:3000"
+              ],
+              "path": [
+                "api",
+                "services"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get all services",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "let jsonData = pm.response.json();\r",
+                  "let index = jsonData.data.length - 1;\r",
+                  "pm.environment.set(\"serviceId\", jsonData.data[index].id);"
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            },
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  ""
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:3000/api/services",
+              "host": [
+                "http://localhost:3000"
+              ],
+              "path": [
+                "api",
+                "services"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get one service",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:3000/api/services/{{serviceId}}",
+              "host": [
+                "http://localhost:3000"
+              ],
+              "path": [
+                "api",
+                "services",
+                "{{serviceId}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update one service",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"title\": \"MEARN - Web Application Development\",\n    \"description\": \"Development of your web app using React and Express with MongoDB.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "http://localhost:3000/api/services/{{serviceId}}",
+              "host": [
+                "http://localhost:3000"
+              ],
+              "path": [
+                "api",
+                "services",
+                "{{serviceId}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete one service",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:3000/api/services/{{serviceId}}",
+              "host": [
+                "http://localhost:3000"
+              ],
+              "path": [
+                "api",
+                "services",
+                "{{serviceId}}"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Users",
+      "item": [
+        {
+          "name": "Create a user",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "let jsonData = pm.response.json();",
+                  "pm.environment.set(\"userId\", jsonData.data.id);"
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"firstname\": \"Clark\",\n    \"lastname\": \"Kent\",\n    \"firstName\": \"Clark\",\n    \"lastName\": \"Kent\",\n    \"email\": \"clark.kent@dailyplanet.com\",    \n    \"password\": \"12345678\",\n    \"username\": \"clark.kent2\",\n    \"created\": \"2023-04-01T00:00:00Z\",\n    \"updated\": \"2023-04-01T00:00:00Z\",\n    \"role\": \"admin\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "http://localhost:3000/api/users",
+              "host": [
+                "http://localhost:3000"
+              ],
+              "path": [
+                "api",
+                "users"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get all users",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "let jsonData = pm.response.json();",
+                  "let index = jsonData.data.length - 1;",
+                  "pm.environment.set(\"userId\", jsonData.data[index].id);"
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:3000/api/users",
+              "host": [
+                "http://localhost:3000"
+              ],
+              "path": [
+                "api",
+                "users"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get one user",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:3000/api/users/{{userId}}",
+              "host": [
+                "http://localhost:3000"
+              ],
+              "path": [
+                "api",
+                "users",
+                "{{userId}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update one user",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"firstname\": \"Bruce\",\n    \"lastname\": \"Wayne\",\n    \"email\": \"bruce.wayne@waynecorp.com\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "http://localhost:3000/api/users/{{userId}}",
+              "host": [
+                "http://localhost:3000"
+              ],
+              "path": [
+                "api",
+                "users",
+                "{{userId}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete one user",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:3000/api/users/{{userId}}",
+              "host": [
+                "http://localhost:3000"
+              ],
+              "path": [
+                "api",
+                "users",
+                "{{userId}}"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}
