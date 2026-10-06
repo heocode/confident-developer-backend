@@ -5,6 +5,10 @@ import mongoose from 'mongoose'
 import morgan from 'morgan'
 
 import { errorHandler } from './middleware/error-handler.js'
+import { projectRouter } from './routes/project-routes.js'
+import { referenceRouter } from './routes/reference-routes.js'
+import { serviceRouter } from './routes/service-routes.js'
+import { userRouter } from './routes/user-routes.js'
 
 function getAllowedOrigins() {
   return (process.env.CLIENT_ORIGIN ?? 'http://localhost:5173')
@@ -43,6 +47,11 @@ export function createApp() {
       },
     })
   })
+
+  app.use('/api/references', referenceRouter)
+  app.use('/api/projects', projectRouter)
+  app.use('/api/services', serviceRouter)
+  app.use('/api/users', userRouter)
 
   app.use((_request, _response, next) => {
     next(createError(404, 'Route not found'))

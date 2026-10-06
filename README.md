@@ -34,6 +34,15 @@ npm test       Run the Node.js test suite
 
 The assignment PDF and supplied Postman collection are stored under `docs/assignment` and `postman`. The supplied collection must remain unchanged for grading.
 
-## Current status
+## API
 
-The Express and MongoDB foundation is configured. Coursework CRUD resources will be implemented in the next stage.
+Complete CRUD endpoints are available at:
+
+- `/api/references`
+- `/api/projects`
+- `/api/services`
+- `/api/users`
+
+Each resource supports `GET` and `POST` on the collection and `GET`, `PUT`, and `DELETE` on `/:id`. Public documents use `id` instead of MongoDB internals. User passwords are hashed before storage and never included in responses.
+
+The API accepts the alternate name casing used by the supplied Postman collection. It also supplies compatibility values for the collection's omitted reference testimonial and project image while the database schemas continue to enforce the complete assignment model.

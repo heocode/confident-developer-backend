@@ -51,6 +51,8 @@ The React, TypeScript, and Vite frontend lives in a separate repository. Do not 
 
 Do not create empty placeholder modules. Add a directory or file when it gains a concrete responsibility.
 
+The four coursework controllers are configured through `src/utils/crud-controller.js`, and the four routers use `src/routes/create-resource-router.js`. Keep the resource-specific controller and router modules even when behavior is shared. API-boundary normalization belongs in `src/utils/input-normalizers.js`; public Mongoose serialization belongs in `src/utils/schema-options.js`.
+
 ## Express
 
 - Configure `http-errors`, Morgan, and CORS as required by the assignment.
@@ -74,7 +76,7 @@ Do not create empty placeholder modules. Add a directory or file when it gains a
 
 ## Required Coursework Resources
 
-Implement separate models, controllers, and routers with complete CRUD operations for:
+Maintain separate models, controllers, and routers with complete CRUD operations for:
 
 - `references`: required fields `name`, `testimonial`, `position`, and `company`.
 - `projects`: required fields `title`, `completion`, `description`, and `image`.
@@ -100,6 +102,14 @@ Each route family provides POST and GET collection operations plus GET, PUT, and
 - Make list ordering deterministic so the supplied sequential CRUD flow remains reliable.
 - Some Postman bodies omit PDF fields or provide aliases such as `firstname` and `firstName`. Accept and normalize the collection payloads without weakening production validation unnecessarily.
 
+Current compatibility decisions:
+
+- List endpoints sort by ascending MongoDB `_id`, which keeps ordering deterministic and places newly created Postman records last in the normal sequential flow.
+- Reference input accepts `firstname`/`firstName` and `lastname`/`lastName`, derives `name` from them, and creates an explicit compatibility testimonial only when the supplied legacy create shape includes both a derived name and email.
+- Project create input uses `/images/project-placeholder.webp` when the supplied Postman payload omits the required `image`; partial updates preserve the existing image.
+- User input accepts both name casing variants. Passwords must contain 8–72 UTF-8 bytes, are hashed with bcrypt before persistence, use `select: false`, and are also removed by public serialization.
+- PUT requests are partial updates for supplied Postman compatibility and reject empty update bodies.
+
 ## Production Extensions
 
 - Treat coursework fields as the minimum schema rather than the complete product model.
@@ -123,6 +133,7 @@ Each route family provides POST and GET collection operations plus GET, PUT, and
 
 - Use the Node.js test runner for automated tests unless a different tool has a concrete advantage.
 - Test successful behavior, validation failures, missing records, malformed IDs, database failures, and response serialization.
+- HTTP contract tests use isolated in-memory model adapters while retaining Mongoose document validation and serialization. They do not replace the required final verification against MongoDB Atlas.
 - Run the supplied Postman collection against a clean or controlled database before taking submission screenshots.
 - The supplied collection contains request-chaining scripts but no `pm.test` assertions. Keep it unchanged and add automated coverage separately.
 - ESLint, automated tests, and relevant API checks must pass before a task is complete.
