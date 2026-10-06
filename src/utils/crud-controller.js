@@ -46,7 +46,7 @@ export function createCrudController({ model, singularName, pluralName, normaliz
       const document = await model.findByIdAndUpdate(
         request.params.id,
         { $set: input },
-        { new: true, runValidators: true },
+        { returnDocument: 'after', runValidators: true },
       )
 
       if (!document) {

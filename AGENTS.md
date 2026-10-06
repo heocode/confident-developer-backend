@@ -62,6 +62,7 @@ The four coursework controllers are configured through `src/utils/crud-controlle
 - Use conventional HTTP status codes and JSON responses.
 - Keep controllers thin when business logic becomes substantial.
 - Return a consistent error shape and never leak production stack traces.
+- Treat Mongoose validation and casting failures as client errors with status `400`; keep messages field-specific but do not expose rejected values or model internals.
 
 ## MongoDB and Mongoose
 
@@ -70,6 +71,7 @@ The four coursework controllers are configured through `src/utils/crud-controlle
 - Keep the connection string in `.env`; commit only `.env.example`.
 - Log a successful database connection as required by the assignment.
 - Configure schemas deliberately with validation, timestamps, indexes, and serialization appropriate to each resource.
+- Use current Mongoose query options such as `returnDocument: 'after'` instead of deprecated aliases.
 - Return public `id` properties rather than MongoDB `_id` fields.
 - Never expose `__v` or internal persistence details through the public API.
 - Normalize alternate input property names at the API boundary instead of storing duplicate fields.

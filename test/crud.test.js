@@ -268,6 +268,21 @@ describe('coursework CRUD API', () => {
     assert.equal(validationResult.body.success, false)
     assert.match(validationResult.body.message, /^Validation failed:/)
 
+    const invalidDateResult = await requestJson(baseUrl, '/api/projects', {
+      method: 'POST',
+      body: JSON.stringify({
+        title: 'Invalid completion date',
+        completion: 'not-a-date',
+        description: 'Invalid date must be a client error.',
+        image: '/test.webp',
+      }),
+    })
+    assert.equal(invalidDateResult.response.status, 400)
+    assert.deepEqual(invalidDateResult.body, {
+      success: false,
+      message: 'Validation failed: Invalid value for completion',
+    })
+
     const malformedIdResult = await requestJson(baseUrl, '/api/projects/not-an-object-id')
     assert.equal(malformedIdResult.response.status, 400)
     assert.deepEqual(malformedIdResult.body, { success: false, message: 'Invalid resource ID' })

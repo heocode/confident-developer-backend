@@ -5,11 +5,15 @@ export function errorHandler(error, _request, response, _next) {
   if (error.name === 'ValidationError') {
     status = 400
     errorMessage = `Validation failed: ${Object.values(error.errors)
-      .map((validationError) => validationError.message)
+      .map((validationError) =>
+        validationError.name === 'CastError'
+          ? `Invalid value for ${validationError.path}`
+          : validationError.message,
+      )
       .join(', ')}`
-  } else if (error.name === 'CastError' && error.kind === 'ObjectId') {
+  } else if (error.name === 'CastError') {
     status = 400
-    errorMessage = 'Invalid resource ID'
+    errorMessage = error.kind === 'ObjectId' ? 'Invalid resource ID' : `Invalid value for ${error.path}`
   } else if (error.name === 'StrictModeError') {
     status = 400
   } else if (error.code === 11_000) {
