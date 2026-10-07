@@ -149,9 +149,28 @@ A singleton document stores public identity, hero copy, biography, location, ava
 
 ### Project
 
-Projects retain the coursework title, completion date, description, and image intent while gaining a stable unique slug, publication state, homepage/main-project flags, display order, client or product label, roles, date range, summary and long-form content, logo, screenshots, build-breakdown items, technology labels, and validated external links.
+Production projects are stored in the explicit `portfolio_projects` collection. They never share the coursework `projects` collection because the frozen assignment deployment retains public CRUD access to that legacy data.
 
-Only one project may be designated as the main project. Business rules that cannot be guaranteed by a simple index belong in a service and transaction where supported.
+A `PortfolioProject` contains:
+
+- a unique stable `slug` and required `title`;
+- `draft`, `published`, or `archived` status;
+- Home copy in `tagline` and `summary`;
+- Projects-page copy in `scope` and the single displayed `position`;
+- a concrete normalized `themeColor` in `#RRGGBB` format;
+- a timeline with required start date for publication and a nullable end date for ongoing work;
+- Home placement with `featured`, `primary`, and integer `order` values;
+- a separate integer `projectsPageOrder` for the project tabs/page;
+- up to 12 build-breakdown items with independent integer percentages from 0 through 100; percentages are completion/capability indicators and do not need to total 100;
+- up to 10 typed HTTPS links;
+- `logoAsset`, `homePreviewAsset`, and up to 12 ordered screenshot references;
+- publication and persistence timestamps.
+
+Drafts require only slug and title so incomplete work can be saved. Published projects require scope, position, theme color, timeline start, logo, at least one screenshot, and publication time. A published featured project additionally requires its tagline, summary, Home preview, and build breakdown.
+
+Only a featured project may be primary. A partial unique MongoDB index prevents more than one published primary project. The project service will additionally limit Home to three published featured projects, validate referenced media, manage primary replacement, and handle cross-document rules in a transaction where supported.
+
+Project color describes the visual identity of the individual project, not a development discipline. The frontend derives accessible surfaces, borders, progress colors, and contrasting text from `themeColor`. Technologies are not part of the approved Project design and are not stored on the project model.
 
 ### Service
 
@@ -175,7 +194,9 @@ GitHub data is fetched server-side and cached as a snapshot with source timestam
 
 ### MediaAsset
 
-Media metadata is stored separately from domain documents: provider, provider asset ID, secure URL, resource type, dimensions, bytes, format, alt text, ownership/usage metadata, and lifecycle state. Binary files are not stored in MongoDB.
+Media metadata is stored in the explicit `media_assets` collection, separately from domain documents. The initial image-only model stores provider, unique provider asset ID, HTTPS delivery URL, resource type, format, integer dimensions, byte size, default alt text, lifecycle state, and timestamps. Images are limited to 10 MB and 10,000 pixels per dimension. Binary files are not stored in MongoDB.
+
+The persistence model currently permits Cloudinary metadata but does not yet implement upload or deletion calls. Those operations belong to the provider-neutral media service in the dedicated media iteration.
 
 ## Media Strategy
 

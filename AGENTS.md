@@ -124,7 +124,7 @@ Current compatibility decisions:
 - Host the frontend on Vercel and proxy relative `/api` requests to the Render backend with an external rewrite. Browser code must not call the `onrender.com` origin directly. Mirror the relative `/api` topology with the Vite development proxy in the frontend repository.
 - Treat the unversioned coursework CRUD as a frozen assignment contract, not as the production security model. Remove it from `main` or place it behind an explicit development-only compatibility switch once production replacements exist.
 - All portfolio content must be manageable through the authenticated admin API. There is one owner administrator, no public signup, and no production user-management CRUD.
-- Projects will require configurable Home selection, main-project selection, display order, logos, screenshots, roles, date ranges, build breakdowns, and external links.
+- Production projects use their own collection and require configurable Home selection, primary-project selection, separate Home/Projects-page ordering, individual theme colors, logos, Home previews, screenshots, a displayed position, date ranges, build breakdowns, and external links.
 - References will require three ratings, moderation state, pagination, deletion ownership, and abuse prevention. New submissions start pending. Submitter email is private and must never appear in public responses.
 - Services will require display order and UI metadata such as icons and colors.
 - Contact inquiries, profile posts, GitHub data, media assets, likes, and views remain separate concerns rather than being forced into the four coursework resources.
@@ -132,6 +132,17 @@ Current compatibility decisions:
 - Fetch GitHub data through the backend and persist a cache snapshot; public frontend requests must not depend on a live GitHub request.
 - Use Cloudinary Free initially through a provider-neutral media service. Use signed direct browser uploads, keep secrets server-side, store only media metadata in MongoDB, and constrain formats, transformations, and upload sizes.
 - Extend schemas and contracts incrementally when the associated product feature is implemented.
+
+Current project persistence decisions:
+
+- `PortfolioProject` uses the explicit `portfolio_projects` collection and never shares the coursework `projects` collection.
+- `MediaAsset` uses `media_assets`; project documents reference media by ObjectId and do not embed provider URLs or binary data.
+- Draft projects require slug and title. Publication requires complete Projects-page content and media; featured publication additionally requires Home copy, preview media, and breakdown data.
+- `themeColor` stores the individual project's normalized six-digit HEX color. It does not represent a role, service, or technology category.
+- `position` is the single role label displayed by the approved design. Technologies are not stored on projects.
+- Build-breakdown percentages are independent integers from 0 to 100 and are not required to sum to 100.
+- Home supports at most three published featured projects and one published primary project. The database enforces primary uniqueness; the project service will enforce the three-project limit and replacement workflow.
+- `projectsPageOrder` is distinct from Home order; avoid the ambiguous name `archiveOrder` because `archived` is also a publication state.
 
 ## Security
 
