@@ -21,6 +21,15 @@ REST API for the Confident Developer portfolio and COMP229 Assignment 2.
 
 The API listens on port `3000` by default. Check it at `GET /api/health`.
 
+## Deployment
+
+The coursework backend is deployed on Render:
+
+- Health check: https://confident-developer-backend.onrender.com/api/health
+- API base URL: https://confident-developer-backend.onrender.com/api
+
+The free Render instance may require a short cold start after a period of inactivity.
+
 ## Commands
 
 ```text
