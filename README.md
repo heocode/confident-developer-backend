@@ -59,6 +59,16 @@ Admin authentication endpoints are:
 
 There is no public signup. Run `npm run admin:create` in an interactive local terminal to provision the single owner account against the configured Atlas database. Never pass its password through command arguments or environment variables.
 
+Authenticated project management endpoints are:
+
+- `POST /api/v1/admin/projects`
+- `GET /api/v1/admin/projects`
+- `GET /api/v1/admin/projects/:id`
+- `PATCH /api/v1/admin/projects/:id`
+- `DELETE /api/v1/admin/projects/:id`
+
+Project writes require the configured frontend `Origin`. Deleting a project does not delete its referenced media assets or provider files.
+
 ## Coursework API
 
 The Assignment 2 branch retains complete CRUD endpoints at:

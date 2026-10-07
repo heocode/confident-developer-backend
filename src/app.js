@@ -10,6 +10,7 @@ import { loadEnvironment } from './config/environment.js'
 import { createApiRateLimiter } from './middleware/api-rate-limiter.js'
 import { errorHandler } from './middleware/error-handler.js'
 import { createAuthService } from './services/auth-service.js'
+import { createPortfolioProjectService } from './services/portfolio-project-service.js'
 import { projectRouter } from './routes/project-routes.js'
 import { referenceRouter } from './routes/reference-routes.js'
 import { serviceRouter } from './routes/service-routes.js'
@@ -22,6 +23,7 @@ export function createApp({
   apiRateLimitOptions,
   loginRateLimitOptions,
   authService = createAuthService(),
+  projectService = createPortfolioProjectService(),
 } = {}) {
   const app = express()
   const allowedOrigins = environment.clientOrigins
@@ -69,7 +71,7 @@ export function createApp({
   app.use(
     '/api/v1',
     createApiRateLimiter(apiRateLimitOptions),
-    createV1Router({ authService, environment, loginRateLimitOptions }),
+    createV1Router({ authService, projectService, environment, loginRateLimitOptions }),
   )
 
   if (enableCourseworkApi) {

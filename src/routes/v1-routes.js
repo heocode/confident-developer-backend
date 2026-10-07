@@ -6,9 +6,10 @@ import { requireAdminSession } from '../middleware/require-admin-session.js'
 import { requireTrustedOrigin } from '../middleware/require-trusted-origin.js'
 import { validateRequest } from '../middleware/validate-request.js'
 import { serializeAdmin } from '../utils/admin-serializer.js'
+import { createAdminProjectRouter } from './admin-project-routes.js'
 import { createAuthRouter } from './auth-routes.js'
 
-export function createV1Router({ authService, environment, loginRateLimitOptions }) {
+export function createV1Router({ authService, projectService, environment, loginRateLimitOptions }) {
   const router = Router()
 
   router.get('/', validateRequest({ query: z.strictObject({}) }), (_request, response) => {
@@ -35,6 +36,7 @@ export function createV1Router({ authService, environment, loginRateLimitOptions
       data: serializeAdmin(request.admin),
     })
   })
+  router.use('/admin/projects', createAdminProjectRouter({ projectService }))
 
   return router
 }

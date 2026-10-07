@@ -120,7 +120,21 @@ Login is limited to five failed attempts per IP in 15 minutes. Successful login 
 
 ### Admin routes
 
-All `/api/v1/admin/*` routes require a valid admin session. Planned route families are:
+All `/api/v1/admin/*` routes require a valid admin session. Unsafe methods additionally require an exact configured `Origin`.
+
+Implemented project routes are:
+
+```text
+POST   /api/v1/admin/projects
+GET    /api/v1/admin/projects
+GET    /api/v1/admin/projects/:id
+PATCH  /api/v1/admin/projects/:id
+DELETE /api/v1/admin/projects/:id
+```
+
+The collection route optionally filters by `status` and uses descending creation time plus `_id` for deterministic admin ordering. Create and update bodies are strict allowlists. `publishedAt` is server-owned and assigned at first publication.
+
+Remaining planned route families are:
 
 ```text
 /api/v1/admin/profile
@@ -166,9 +180,11 @@ A `PortfolioProject` contains:
 - `logoAsset`, `homePreviewAsset`, and up to 12 ordered screenshot references;
 - publication and persistence timestamps.
 
-Drafts require only slug and title so incomplete work can be saved. Published projects require scope, position, theme color, timeline start, logo, at least one screenshot, and publication time. A published featured project additionally requires its tagline, summary, Home preview, and build breakdown.
+Drafts require only slug and title so incomplete work can be saved. Published projects require scope, position, theme color, timeline start, logo, at least one screenshot, and publication time. A published featured project additionally requires its tagline, summary, Home preview, and build breakdown. The service assigns `publishedAt` automatically on first publication instead of accepting it as writable input.
 
-Only a featured project may be primary. A partial unique MongoDB index prevents more than one published primary project. The project service will additionally limit Home to three published featured projects, validate referenced media, manage primary replacement, and handle cross-document rules in a transaction where supported.
+Only a featured project may be primary. A partial unique MongoDB index prevents more than one published primary project. The project service additionally limits Home to three published featured projects, requires referenced media to exist in active state, and atomically replaces the current primary inside a MongoDB transaction.
+
+Deleting a project removes only the `PortfolioProject` document. Referenced media metadata and provider files remain available because assets can be shared and have an independent lifecycle. The future Media API owns usage checks and explicit deletion.
 
 Project color describes the visual identity of the individual project, not a development discipline. The frontend derives accessible surfaces, borders, progress colors, and contrasting text from `themeColor`. Technologies are not part of the approved Project design and are not stored on the project model.
 

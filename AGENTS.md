@@ -45,6 +45,7 @@ The React, TypeScript, and Vite frontend lives in a separate repository. Do not 
 - `src/routes`: resource routers.
 - `src/middleware`: shared Express middleware and error handling.
 - `src/services`: business logic and external integrations when extracting it provides value.
+- `src/validation`: route-specific production request schemas.
 - `src/utils`: small shared utilities such as serializers or response helpers.
 - `test`: automated tests.
 - `docs/assignment`: immutable coursework reference files.
@@ -141,7 +142,10 @@ Current project persistence decisions:
 - `themeColor` stores the individual project's normalized six-digit HEX color. It does not represent a role, service, or technology category.
 - `position` is the single role label displayed by the approved design. Technologies are not stored on projects.
 - Build-breakdown percentages are independent integers from 0 to 100 and are not required to sum to 100.
-- Home supports at most three published featured projects and one published primary project. The database enforces primary uniqueness; the project service will enforce the three-project limit and replacement workflow.
+- Protected project CRUD is available at `/api/v1/admin/projects` and `/:id`. Create and update accept strict allowlisted payloads; list optionally filters by status and sorts by descending creation time and `_id`.
+- Home supports at most three published featured projects and one published primary project. The database enforces primary uniqueness; the project service enforces the three-project limit and replaces the current primary inside a MongoDB transaction.
+- Every referenced media document must exist with `active` status when a project is saved. `publishedAt` is server-owned and is assigned on first publication.
+- Deleting a project deletes only its document. It never deletes referenced `MediaAsset` documents or provider files; media lifecycle is managed separately.
 - `projectsPageOrder` is distinct from Home order; avoid the ambiguous name `archiveOrder` because `archived` is also a publication state.
 
 ## Security
