@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import { projectLinkTypes, projectStatuses } from '../models/portfolio-project.js'
+import { projectLinkIcons, projectStatuses } from '../models/portfolio-project.js'
 
 const objectIdSchema = z.string().trim().regex(/^[a-f\d]{24}$/i, 'Invalid resource ID')
 const slugSchema = z
@@ -34,58 +34,72 @@ const homeSchema = z
     primary: z.boolean().optional(),
     order: integer().optional(),
   })
+  .refine((home) => !(home.featured === false && home.primary === true), {
+    message: 'Primary projects must also be featured',
+    path: ['primary'],
+  })
   .refine((home) => Object.keys(home).length > 0, 'Home placement update cannot be empty')
 
-const buildBreakdownSchema = z.strictObject({
-  label: z.string().trim().min(1).max(120),
-  percentage: integer(0, 100),
-})
+function buildBreakdownSchema({ allowId }) {
+  return z.strictObject({
+    ...(allowId ? { id: objectIdSchema.optional() } : {}),
+    label: z.string().trim().min(1).max(120),
+    percentage: integer(0, 100),
+  })
+}
 
-const projectLinkSchema = z.strictObject({
-  type: z.enum(projectLinkTypes),
-  label: z.string().trim().min(1).max(80),
-  url: z
-    .string()
-    .trim()
-    .url()
-    .max(2_048)
-    .refine((value) => new URL(value).protocol === 'https:', 'Project link must use HTTPS'),
-})
+function projectLinkSchema({ allowId }) {
+  return z.strictObject({
+    ...(allowId ? { id: objectIdSchema.optional() } : {}),
+    icon: z.enum(projectLinkIcons),
+    label: z.string().trim().min(1).max(80),
+    url: z
+      .string()
+      .trim()
+      .url()
+      .max(2_048)
+      .refine((value) => new URL(value).protocol === 'https:', 'Project link must use HTTPS'),
+  })
+}
 
-const screenshotSchema = z.strictObject({
-  asset: objectIdSchema,
-  alt: z.string().trim().min(1).max(300),
-  order: integer().default(0),
-})
+function screenshotSchema({ allowId }) {
+  return z.strictObject({
+    ...(allowId ? { id: objectIdSchema.optional() } : {}),
+    asset: objectIdSchema,
+    alt: z.string().trim().min(1).max(300),
+  })
+}
 
-const writableProjectFields = {
-  tagline: optionalText(240),
-  summary: optionalText(1_500),
-  scope: optionalText(5_000),
-  position: optionalText(160),
-  themeColor: z.string().trim().regex(/^#[0-9a-f]{6}$/i, 'Theme color must use #RRGGBB format').nullable().optional(),
-  status: z.enum(projectStatuses).optional(),
-  timeline: timelineSchema.nullable().optional(),
-  home: homeSchema.optional(),
-  projectsPageOrder: integer().optional(),
-  buildBreakdown: z.array(buildBreakdownSchema).max(12).optional(),
-  links: z.array(projectLinkSchema).max(10).optional(),
-  logoAsset: objectIdSchema.nullable().optional(),
-  homePreviewAsset: objectIdSchema.nullable().optional(),
-  screenshots: z.array(screenshotSchema).max(12).optional(),
+function writableProjectFields({ allowNestedIds }) {
+  return {
+    tagline: optionalText(240),
+    summary: optionalText(1_500),
+    scope: optionalText(5_000),
+    position: optionalText(160),
+    themeColor: z.string().trim().regex(/^#[0-9a-f]{6}$/i, 'Theme color must use #RRGGBB format').nullable().optional(),
+    status: z.enum(projectStatuses).optional(),
+    timeline: timelineSchema.nullable().optional(),
+    home: homeSchema.optional(),
+    projectsPageOrder: integer().optional(),
+    buildBreakdown: z.array(buildBreakdownSchema({ allowId: allowNestedIds })).max(12).optional(),
+    links: z.array(projectLinkSchema({ allowId: allowNestedIds })).max(10).optional(),
+    logoAsset: objectIdSchema.nullable().optional(),
+    homePreviewAsset: objectIdSchema.nullable().optional(),
+    screenshots: z.array(screenshotSchema({ allowId: allowNestedIds })).max(12).optional(),
+  }
 }
 
 export const createAdminProjectBodySchema = z.strictObject({
   slug: slugSchema,
   title: z.string().trim().min(1).max(160),
-  ...writableProjectFields,
+  ...writableProjectFields({ allowNestedIds: false }),
 })
 
 export const updateAdminProjectBodySchema = z
   .strictObject({
     slug: slugSchema.optional(),
     title: z.string().trim().min(1).max(160).optional(),
-    ...writableProjectFields,
+    ...writableProjectFields({ allowNestedIds: true }),
   })
   .refine((body) => Object.keys(body).length > 0, 'Request body must contain at least one field')
 

@@ -1,7 +1,7 @@
 import mongoose from 'mongoose'
 
 export const projectStatuses = Object.freeze(['draft', 'published', 'archived'])
-export const projectLinkTypes = Object.freeze(['mobile', 'backend', 'website', 'appStore', 'github', 'other'])
+export const projectLinkIcons = Object.freeze(['github', 'website', 'app-store', 'external'])
 
 const integerValidation = {
   validator: Number.isInteger,
@@ -13,12 +13,11 @@ const buildBreakdownSchema = new mongoose.Schema(
     label: { type: String, required: true, trim: true, maxlength: 120 },
     percentage: { type: Number, required: true, min: 0, max: 100, validate: integerValidation },
   },
-  { _id: false },
 )
 
 const projectLinkSchema = new mongoose.Schema(
   {
-    type: { type: String, enum: projectLinkTypes, required: true },
+    icon: { type: String, enum: projectLinkIcons, required: true },
     label: { type: String, required: true, trim: true, maxlength: 80 },
     url: {
       type: String,
@@ -37,16 +36,13 @@ const projectLinkSchema = new mongoose.Schema(
       },
     },
   },
-  { _id: false },
 )
 
 const projectScreenshotSchema = new mongoose.Schema(
   {
     asset: { type: mongoose.Schema.Types.ObjectId, ref: 'MediaAsset', required: true },
     alt: { type: String, required: true, trim: true, maxlength: 300 },
-    order: { type: Number, required: true, min: 0, max: 999, default: 0, validate: integerValidation },
   },
-  { _id: false },
 )
 
 const timelineSchema = new mongoose.Schema(
@@ -148,7 +144,7 @@ portfolioProjectSchema.pre('validate', function validateProjectState() {
 
   if (this.status !== 'published') return
 
-  const requiredTextFields = ['scope', 'position', 'themeColor']
+  const requiredTextFields = ['tagline', 'summary', 'scope', 'position', 'themeColor']
 
   for (const field of requiredTextFields) {
     if (!hasText(this[field])) this.invalidate(field, `${field} is required for published projects`)
@@ -166,9 +162,6 @@ portfolioProjectSchema.pre('validate', function validateProjectState() {
 
   if (!this.home.featured) return
 
-  for (const field of ['tagline', 'summary']) {
-    if (!hasText(this[field])) this.invalidate(field, `${field} is required for featured projects`)
-  }
   if (!this.homePreviewAsset) {
     this.invalidate('homePreviewAsset', 'Home preview is required for featured projects')
   }

@@ -5,6 +5,7 @@ import { MediaAsset } from '../models/media-asset.js'
 import { PortfolioProject } from '../models/portfolio-project.js'
 
 const MAX_PUBLISHED_FEATURED_PROJECTS = 3
+const ORDERED_PROJECT_ARRAY_FIELDS = Object.freeze(['buildBreakdown', 'links', 'screenshots'])
 
 async function runInMongoTransaction(operation) {
   const session = await mongoose.startSession()
@@ -28,8 +29,38 @@ function mergeNested(current, patch) {
   return { ...(documentValue(current) ?? {}), ...patch }
 }
 
+function reconcileOrderedArray(project, field, incomingItems) {
+  const currentItems = project[field] ?? []
+  const currentItemsById = new Map(currentItems.map((item) => [item._id.toString(), item]))
+  const seenIds = new Set()
+
+  return incomingItems.map((incomingItem) => {
+    const { id, ...values } = incomingItem
+    if (!id) return values
+
+    if (seenIds.has(id)) {
+      throw createError(400, `Duplicate ${field} item ID`)
+    }
+    seenIds.add(id)
+
+    const currentItem = currentItemsById.get(id)
+    if (!currentItem) {
+      throw createError(400, `Unknown ${field} item ID`)
+    }
+
+    return { _id: currentItem._id, ...values }
+  })
+}
+
 function applyProjectPatch(project, patch) {
   const { timeline, home, ...fields } = patch
+
+  for (const field of ORDERED_PROJECT_ARRAY_FIELDS) {
+    if (!Object.hasOwn(fields, field)) continue
+    project.set(field, reconcileOrderedArray(project, field, fields[field]))
+    delete fields[field]
+  }
+
   project.set(fields)
 
   if (Object.hasOwn(patch, 'timeline')) {
@@ -37,7 +68,12 @@ function applyProjectPatch(project, patch) {
   }
 
   if (Object.hasOwn(patch, 'home')) {
-    project.set('home', mergeNested(project.home, home))
+    const nextHome = mergeNested(project.home, home)
+    if (home.featured === false && home.primary !== true) nextHome.primary = false
+    if (nextHome.primary && !nextHome.featured) {
+      throw createError(400, 'Primary projects must also be featured')
+    }
+    project.set('home', nextHome)
   }
 }
 

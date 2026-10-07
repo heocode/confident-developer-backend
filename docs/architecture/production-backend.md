@@ -187,14 +187,16 @@ A `PortfolioProject` contains:
 - a timeline with required start date for publication and a nullable end date for ongoing work;
 - Home placement with `featured`, `primary`, and integer `order` values;
 - a separate integer `projectsPageOrder` for the project tabs/page;
-- up to 12 build-breakdown items with independent integer percentages from 0 through 100; percentages are completion/capability indicators and do not need to total 100;
-- up to 10 typed HTTPS links;
+- up to 12 build-breakdown items with stable subdocument IDs and independent integer percentages from 0 through 100; percentages are completion/capability indicators and do not need to total 100;
+- up to 10 HTTPS links with stable subdocument IDs and `github`, `website`, `app-store`, or `external` icon keys;
 - `logoAsset`, `homePreviewAsset`, and up to 12 ordered screenshot references;
 - publication and persistence timestamps.
 
-Drafts require only slug and title so incomplete work can be saved. Published projects require scope, position, theme color, timeline start, logo, at least one screenshot, and publication time. A published featured project additionally requires its tagline, summary, Home preview, and build breakdown. The service assigns `publishedAt` automatically on first publication instead of accepting it as writable input.
+Drafts require only slug and title so incomplete work can be saved. Published projects require tagline, summary, scope, position, theme color, timeline start, logo, at least one screenshot, and publication time. A published featured project additionally requires its Home preview and build breakdown. The service assigns `publishedAt` automatically on first publication instead of accepting it as writable input.
 
-Only a featured project may be primary. A partial unique MongoDB index prevents more than one published primary project. The project service additionally limits Home to three published featured projects, requires referenced media to exist in active state, and atomically replaces the current primary inside a MongoDB transaction.
+Only a featured project may be primary. Removing a project from Home automatically clears its primary state, while an explicitly contradictory state is rejected. A partial unique MongoDB index prevents more than one published primary project. The project service additionally limits Home to three published featured projects, requires referenced media to exist in active state, and atomically replaces the current primary inside a MongoDB transaction.
+
+Build breakdowns, project links, and screenshots use MongoDB array order as their display-order source of truth; nested items do not carry separate order fields. Admin responses expose each subdocument `_id` as `id`. PATCH accepts complete replacement arrays: known IDs retain identity, new items omit `id`, omitted items are deleted, and unknown or duplicate IDs are rejected before the transaction saves. This supports future drag-and-drop reordering without recreating media assets.
 
 Deleting a project removes only the `PortfolioProject` document. Referenced media metadata and provider files remain available because assets can be shared and have an independent lifecycle. The Media API owns usage checks and explicit deletion.
 

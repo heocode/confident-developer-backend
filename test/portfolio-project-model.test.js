@@ -23,6 +23,8 @@ function publishedProject(overrides = {}) {
   return new PortfolioProject({
     slug: 'unicon',
     title: 'Unicon',
+    tagline: 'Campus networking for verified students',
+    summary: 'Designed and built from the ground up.',
     scope: 'A campus networking platform for verified students.',
     position: 'Founder & Developer',
     themeColor: '#3f6eb5',
@@ -30,7 +32,7 @@ function publishedProject(overrides = {}) {
     timeline: { startDate: '2026-06-01', endDate: null },
     projectsPageOrder: 1,
     logoAsset,
-    screenshots: [{ asset: screenshotAsset, alt: 'Unicon home feed', order: 0 }],
+    screenshots: [{ asset: screenshotAsset, alt: 'Unicon home feed' }],
     publishedAt: '2026-10-07',
     ...overrides,
   })
@@ -53,8 +55,6 @@ describe('PortfolioProject model', () => {
 
   it('normalizes a project color and accepts independent breakdown percentages', async () => {
     const project = publishedProject({
-      tagline: 'Campus networking for verified students',
-      summary: 'Designed and built from the ground up.',
       home: { featured: true, primary: true, order: 1 },
       homePreviewAsset: new mongoose.Types.ObjectId(),
       buildBreakdown: [
@@ -71,6 +71,7 @@ describe('PortfolioProject model', () => {
       project.buildBreakdown.map(({ percentage }) => percentage),
       [100, 100, 80],
     )
+    assert.equal(project.buildBreakdown.every((item) => item._id instanceof mongoose.Types.ObjectId), true)
   })
 
   it('allows published projects that are not featured without Home-only content', async () => {
@@ -92,6 +93,8 @@ describe('PortfolioProject model', () => {
 
     await assert.rejects(project.validate(), (error) => {
       assert.equal(error.name, 'ValidationError')
+      assert.ok(error.errors.tagline)
+      assert.ok(error.errors.summary)
       assert.ok(error.errors.scope)
       assert.ok(error.errors.position)
       assert.ok(error.errors.themeColor)
@@ -107,8 +110,6 @@ describe('PortfolioProject model', () => {
     const project = publishedProject({ home: { featured: true, primary: false, order: 1 } })
 
     await assert.rejects(project.validate(), (error) => {
-      assert.ok(error.errors.tagline)
-      assert.ok(error.errors.summary)
       assert.ok(error.errors.homePreviewAsset)
       assert.ok(error.errors.buildBreakdown)
       return true
@@ -123,7 +124,7 @@ describe('PortfolioProject model', () => {
       timeline: { startDate: '2026-10-01', endDate: '2026-09-01' },
       home: { featured: false, primary: true },
       buildBreakdown: [{ label: 'Backend', percentage: 87.5 }],
-      links: [{ type: 'website', label: 'Website', url: 'http://insecure.example' }],
+      links: [{ icon: 'website', label: 'Website', url: 'http://insecure.example' }],
     })
 
     await assert.rejects(project.validate(), (error) => {
@@ -135,6 +136,23 @@ describe('PortfolioProject model', () => {
       assert.ok(error.errors['links.0.url'])
       return true
     })
+  })
+
+  it('assigns stable identifiers to ordered project content without separate order fields', async () => {
+    const project = new PortfolioProject({
+      slug: 'ordered-content',
+      title: 'Ordered Content',
+      buildBreakdown: [{ label: 'Design', percentage: 90 }],
+      links: [{ icon: 'website', label: 'Website', url: 'https://example.com' }],
+      screenshots: [{ asset: new mongoose.Types.ObjectId(), alt: 'Dashboard' }],
+    })
+
+    await project.validate()
+
+    assert.ok(project.buildBreakdown[0]._id)
+    assert.ok(project.links[0]._id)
+    assert.ok(project.screenshots[0]._id)
+    assert.equal('order' in project.screenshots[0].toObject(), false)
   })
 
   it('defines deterministic public ordering and uniqueness indexes', () => {

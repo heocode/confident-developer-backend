@@ -138,12 +138,15 @@ Current project persistence decisions:
 
 - `PortfolioProject` uses the explicit `portfolio_projects` collection and never shares the coursework `projects` collection.
 - `MediaAsset` uses `media_assets`; project documents reference media by ObjectId and do not embed provider URLs or binary data.
-- Draft projects require slug and title. Publication requires complete Projects-page content and media; featured publication additionally requires Home copy, preview media, and breakdown data.
+- Draft projects require slug and title. Publication requires tagline, summary, complete Projects-page content, and media; featured publication additionally requires Home preview media and breakdown data.
 - `themeColor` stores the individual project's normalized six-digit HEX color. It does not represent a role, service, or technology category.
 - `position` is the single role label displayed by the approved design. Technologies are not stored on projects.
 - Build-breakdown percentages are independent integers from 0 to 100 and are not required to sum to 100.
+- Build-breakdown, link, and screenshot entries use stable Mongoose subdocument IDs. Their MongoDB array position is the display-order source of truth; do not add per-item order fields.
+- Admin project PATCH treats each supplied nested array as its complete next state. Existing entries retain identity through `id`, new entries omit it, omitted entries are removed, and duplicate or unknown IDs are rejected before saving.
+- Project links use `icon` with the allowlist `github`, `website`, `app-store`, and `external`; all project link URLs must use HTTPS.
 - Protected project CRUD is available at `/api/v1/admin/projects` and `/:id`. Create and update accept strict allowlisted payloads; list optionally filters by status and sorts by descending creation time and `_id`.
-- Home supports at most three published featured projects and one published primary project. The database enforces primary uniqueness; the project service enforces the three-project limit and replaces the current primary inside a MongoDB transaction.
+- Home supports at most three published featured projects and one published primary project. The database enforces primary uniqueness; the project service enforces the three-project limit and replaces the current primary inside a MongoDB transaction. Disabling featured placement clears primary automatically, while explicitly requesting primary without featured is rejected.
 - Every referenced media document must exist with `active` status when a project is saved. `publishedAt` is server-owned and is assigned on first publication.
 - Deleting a project deletes only its document. It never deletes referenced `MediaAsset` documents or provider files; media lifecycle is managed separately.
 - `projectsPageOrder` is distinct from Home order; avoid the ambiguous name `archiveOrder` because `archived` is also a publication state.
