@@ -148,6 +148,17 @@ Current project persistence decisions:
 - Deleting a project deletes only its document. It never deletes referenced `MediaAsset` documents or provider files; media lifecycle is managed separately.
 - `projectsPageOrder` is distinct from Home order; avoid the ambiguous name `archiveOrder` because `archived` is also a publication state.
 
+Current media decisions:
+
+- Protected media management is available under `/api/v1/admin/media`; it includes signed-upload descriptors, idempotent registration, paginated listing, usage-aware detail, alt updates, and explicit deletion.
+- Cloudinary integration is isolated behind `cloudinary-media-provider.js`. Domain services and controllers consume the provider interface rather than importing the Cloudinary SDK.
+- Signed browser uploads use unique managed public IDs, `overwrite=false`, SHA-256 signatures, an application tag, and an image-format allowlist. The API secret never appears in responses.
+- `MediaAsset.providerAssetId` stores Cloudinary's immutable `asset_id`. Registration fetches authoritative metadata through the provider instead of trusting URL, dimensions, format, or byte counts from the browser.
+- Media lists use page-based pagination with default limit 24, maximum limit 100, and descending `createdAt`/`_id` ordering.
+- Admin media serializers expose the delivery URL and useful metadata but omit provider asset IDs and persistence internals.
+- Media deletion is blocked while any project references the asset. Unused assets become `pendingDeletion` before provider deletion; metadata is removed only after provider deletion succeeds or reports the asset already absent.
+- Cloudinary environment values are optional as a complete group so the application can start before provider setup. Media provider operations return `503` until all three values are configured.
+
 ## Security
 
 - Never store plaintext passwords. Hash passwords and omit password hashes from every API response.

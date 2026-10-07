@@ -18,7 +18,8 @@ REST API for the Confident Developer portfolio and COMP229 Assignment 2.
 3. Copy `.env.example` to `.env` and replace the MongoDB Atlas placeholders.
 4. Ensure the MongoDB connection string selects the `portfolio` database.
 5. Keep `ENABLE_COURSEWORK_API=false` for production development.
-6. Start the development server with `npm run dev`.
+6. Add all three `CLOUDINARY_*` values when testing media uploads; never commit them.
+7. Start the development server with `npm run dev`.
 
 The API listens on port `3000` by default. Check it at `GET /api/health`.
 
@@ -68,6 +69,17 @@ Authenticated project management endpoints are:
 - `DELETE /api/v1/admin/projects/:id`
 
 Project writes require the configured frontend `Origin`. Deleting a project does not delete its referenced media assets or provider files.
+
+Authenticated media management endpoints are:
+
+- `POST /api/v1/admin/media/upload-signature`
+- `POST /api/v1/admin/media`
+- `GET /api/v1/admin/media`
+- `GET /api/v1/admin/media/:id`
+- `PATCH /api/v1/admin/media/:id`
+- `DELETE /api/v1/admin/media/:id`
+
+Uploads go directly from the browser to Cloudinary using a backend-generated signature. The backend then verifies authoritative Cloudinary metadata before registration. Media operations return `503` until `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, and `CLOUDINARY_API_SECRET` are configured together.
 
 ## Coursework API
 

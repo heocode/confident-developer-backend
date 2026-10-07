@@ -12,6 +12,9 @@ const rawEnvironmentSchema = z
     CLIENT_ORIGINS: z.string().optional(),
     TRUST_PROXY: z.string().optional(),
     ENABLE_COURSEWORK_API: z.string().optional(),
+    CLOUDINARY_CLOUD_NAME: z.string().optional(),
+    CLOUDINARY_API_KEY: z.string().optional(),
+    CLOUDINARY_API_SECRET: z.string().optional(),
   })
   .passthrough()
 
@@ -68,6 +71,26 @@ function parseOrigins(value, nodeEnv) {
   return [...new Set(origins)]
 }
 
+function parseCloudinaryConfiguration(raw) {
+  const values = [raw.CLOUDINARY_CLOUD_NAME, raw.CLOUDINARY_API_KEY, raw.CLOUDINARY_API_SECRET].map((value) =>
+    value?.trim(),
+  )
+  const configuredValues = values.filter(Boolean)
+
+  if (configuredValues.length === 0) return null
+  if (configuredValues.length !== values.length) {
+    throw new Error('CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, and CLOUDINARY_API_SECRET must be configured together')
+  }
+
+  const [cloudName, apiKey, apiSecret] = values
+
+  if (!/^[a-zA-Z0-9_-]+$/.test(cloudName)) {
+    throw new Error('CLOUDINARY_CLOUD_NAME contains invalid characters')
+  }
+
+  return Object.freeze({ cloudName, apiKey, apiSecret })
+}
+
 export function getPort(value) {
   if (value === undefined || value === '') {
     return DEFAULT_PORT
@@ -99,5 +122,6 @@ export function loadEnvironment(source = process.env) {
     clientOrigins: Object.freeze(parseOrigins(raw.CLIENT_ORIGINS ?? raw.CLIENT_ORIGIN, raw.NODE_ENV)),
     trustProxy: parseTrustProxy(raw.TRUST_PROXY),
     enableCourseworkApi: parseBoolean(raw.ENABLE_COURSEWORK_API, 'ENABLE_COURSEWORK_API'),
+    cloudinary: parseCloudinaryConfiguration(raw),
   })
 }

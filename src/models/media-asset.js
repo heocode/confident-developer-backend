@@ -1,6 +1,7 @@
 import mongoose from 'mongoose'
 
-const MAX_IMAGE_BYTES = 10 * 1024 * 1024
+export const MAX_IMAGE_BYTES = 10 * 1024 * 1024
+export const MAX_IMAGE_DIMENSION = 10_000
 
 const integerValidation = {
   validator: Number.isInteger,
@@ -40,8 +41,8 @@ const mediaAssetSchema = new mongoose.Schema(
       maxlength: 20,
       match: /^[a-z0-9]+$/,
     },
-    width: { type: Number, required: true, min: 1, max: 10_000, validate: integerValidation },
-    height: { type: Number, required: true, min: 1, max: 10_000, validate: integerValidation },
+    width: { type: Number, required: true, min: 1, max: MAX_IMAGE_DIMENSION, validate: integerValidation },
+    height: { type: Number, required: true, min: 1, max: MAX_IMAGE_DIMENSION, validate: integerValidation },
     bytes: { type: Number, required: true, min: 1, max: MAX_IMAGE_BYTES, validate: integerValidation },
     alt: { type: String, required: true, trim: true, maxlength: 300 },
     status: {

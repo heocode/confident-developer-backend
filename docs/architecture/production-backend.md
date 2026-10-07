@@ -134,6 +134,19 @@ DELETE /api/v1/admin/projects/:id
 
 The collection route optionally filters by `status` and uses descending creation time plus `_id` for deterministic admin ordering. Create and update bodies are strict allowlists. `publishedAt` is server-owned and assigned at first publication.
 
+Implemented media routes are:
+
+```text
+POST   /api/v1/admin/media/upload-signature
+POST   /api/v1/admin/media
+GET    /api/v1/admin/media
+GET    /api/v1/admin/media/:id
+PATCH  /api/v1/admin/media/:id
+DELETE /api/v1/admin/media/:id
+```
+
+The media collection uses page-based pagination with a default page size of 24 and maximum of 100. Detail responses include project usage counts. Registration is idempotent by provider asset ID, and PATCH currently updates the default alt text.
+
 Remaining planned route families are:
 
 ```text
@@ -144,7 +157,6 @@ Remaining planned route families are:
 /api/v1/admin/inquiries
 /api/v1/admin/posts
 /api/v1/admin/github
-/api/v1/admin/media
 ```
 
 Admin serializers may include private operational fields, but never password hashes, raw session tokens, deletion-token hashes, or storage-provider secrets.
@@ -184,7 +196,7 @@ Drafts require only slug and title so incomplete work can be saved. Published pr
 
 Only a featured project may be primary. A partial unique MongoDB index prevents more than one published primary project. The project service additionally limits Home to three published featured projects, requires referenced media to exist in active state, and atomically replaces the current primary inside a MongoDB transaction.
 
-Deleting a project removes only the `PortfolioProject` document. Referenced media metadata and provider files remain available because assets can be shared and have an independent lifecycle. The future Media API owns usage checks and explicit deletion.
+Deleting a project removes only the `PortfolioProject` document. Referenced media metadata and provider files remain available because assets can be shared and have an independent lifecycle. The Media API owns usage checks and explicit deletion.
 
 Project color describes the visual identity of the individual project, not a development discipline. The frontend derives accessible surfaces, borders, progress colors, and contrasting text from `themeColor`. Technologies are not part of the approved Project design and are not stored on the project model.
 
@@ -210,13 +222,17 @@ GitHub data is fetched server-side and cached as a snapshot with source timestam
 
 ### MediaAsset
 
-Media metadata is stored in the explicit `media_assets` collection, separately from domain documents. The initial image-only model stores provider, unique provider asset ID, HTTPS delivery URL, resource type, format, integer dimensions, byte size, default alt text, lifecycle state, and timestamps. Images are limited to 10 MB and 10,000 pixels per dimension. Binary files are not stored in MongoDB.
+Media metadata is stored in the explicit `media_assets` collection, separately from domain documents. The initial image-only model stores provider, unique provider asset ID, HTTPS delivery URL, resource type, format, integer dimensions, byte size, default alt text, lifecycle state, and timestamps. For Cloudinary, the provider asset ID is the immutable `asset_id`, not the renameable public ID. Images are limited to 10 MB and 10,000 pixels per dimension. Binary files are not stored in MongoDB.
 
-The persistence model currently permits Cloudinary metadata but does not yet implement upload or deletion calls. Those operations belong to the provider-neutral media service in the dedicated media iteration.
+Admin serializers return the delivery URL and presentation metadata while omitting the provider asset ID. Media lists use descending creation time and `_id` plus page-based pagination. Detail responses include whether and how many projects currently reference the asset.
 
 ## Media Strategy
 
-Cloudinary Free is the initial media provider. The admin frontend requests a short-lived signed upload payload from the backend and uploads directly to Cloudinary. The API secret never reaches the browser. The backend validates and persists the returned asset metadata and owns deletion.
+Cloudinary Free is the initial media provider. The admin frontend requests a signed upload descriptor from the backend and uploads directly to Cloudinary. Each descriptor fixes a unique managed public ID, prevents overwrite, applies an image-format allowlist and application tag, and uses SHA-256 signing. The API secret never reaches the browser.
+
+After upload, the frontend sends only the provider name, returned immutable asset ID, and alt text to the registration endpoint. The backend fetches authoritative metadata from Cloudinary's Admin API instead of trusting a browser-provided URL, format, dimensions, or byte count. Repeated registration of the same provider asset is idempotent.
+
+Deletion first checks project logo, Home preview, and screenshot references. A referenced asset returns `409`. An unused asset is persisted as `pendingDeletion` before the provider call; its MongoDB metadata is removed only after Cloudinary reports deletion or that the provider asset is already absent. A failed provider request leaves the pending record available for retry.
 
 Application code accesses storage through a small provider-neutral media service so Cloudinary can later be replaced by Cloudflare R2 or another provider without rewriting controllers or schemas.
 

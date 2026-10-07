@@ -161,7 +161,7 @@ describe('PortfolioProject model', () => {
 describe('MediaAsset model', () => {
   it('stores provider metadata outside project documents', async () => {
     const asset = new MediaAsset({
-      providerAssetId: 'portfolio/projects/unicon/logo',
+      providerAssetId: '6f87f9462fbb4f5a9d6b892b4d0b2f31',
       secureUrl: 'https://res.cloudinary.com/example/image/upload/unicon.webp',
       format: 'webp',
       width: 800,

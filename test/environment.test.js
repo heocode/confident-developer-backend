@@ -14,6 +14,7 @@ describe('environment configuration', () => {
       clientOrigins: ['http://localhost:5173'],
       trustProxy: false,
       enableCourseworkApi: false,
+      cloudinary: null,
     })
   })
 
@@ -38,6 +39,33 @@ describe('environment configuration', () => {
     const environment = loadEnvironment({ CLIENT_ORIGIN: 'http://localhost:4173' })
 
     assert.deepEqual(environment.clientOrigins, ['http://localhost:4173'])
+  })
+
+  it('loads Cloudinary credentials only when the complete configuration is present', () => {
+    const environment = loadEnvironment({
+      CLOUDINARY_CLOUD_NAME: 'portfolio-cloud',
+      CLOUDINARY_API_KEY: 'public-key',
+      CLOUDINARY_API_SECRET: 'private-secret',
+    })
+
+    assert.deepEqual(environment.cloudinary, {
+      cloudName: 'portfolio-cloud',
+      apiKey: 'public-key',
+      apiSecret: 'private-secret',
+    })
+    assert.throws(
+      () => loadEnvironment({ CLOUDINARY_CLOUD_NAME: 'portfolio-cloud' }),
+      /must be configured together/,
+    )
+    assert.throws(
+      () =>
+        loadEnvironment({
+          CLOUDINARY_CLOUD_NAME: 'invalid cloud',
+          CLOUDINARY_API_KEY: 'key',
+          CLOUDINARY_API_SECRET: 'secret',
+        }),
+      /invalid characters/,
+    )
   })
 
   it('rejects missing or unsafe production settings', () => {

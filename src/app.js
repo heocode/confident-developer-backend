@@ -10,6 +10,8 @@ import { loadEnvironment } from './config/environment.js'
 import { createApiRateLimiter } from './middleware/api-rate-limiter.js'
 import { errorHandler } from './middleware/error-handler.js'
 import { createAuthService } from './services/auth-service.js'
+import { createCloudinaryMediaProvider } from './services/cloudinary-media-provider.js'
+import { createMediaService } from './services/media-service.js'
 import { createPortfolioProjectService } from './services/portfolio-project-service.js'
 import { projectRouter } from './routes/project-routes.js'
 import { referenceRouter } from './routes/reference-routes.js'
@@ -23,6 +25,8 @@ export function createApp({
   apiRateLimitOptions,
   loginRateLimitOptions,
   authService = createAuthService(),
+  mediaProvider = createCloudinaryMediaProvider(environment.cloudinary),
+  mediaService = createMediaService({ mediaProvider }),
   projectService = createPortfolioProjectService(),
 } = {}) {
   const app = express()
@@ -71,7 +75,7 @@ export function createApp({
   app.use(
     '/api/v1',
     createApiRateLimiter(apiRateLimitOptions),
-    createV1Router({ authService, projectService, environment, loginRateLimitOptions }),
+    createV1Router({ authService, mediaService, projectService, environment, loginRateLimitOptions }),
   )
 
   if (enableCourseworkApi) {
