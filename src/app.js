@@ -1,4 +1,5 @@
 import cors from 'cors'
+import cookieParser from 'cookie-parser'
 import express from 'express'
 import helmet from 'helmet'
 import createError from 'http-errors'
@@ -8,16 +9,19 @@ import morgan from 'morgan'
 import { loadEnvironment } from './config/environment.js'
 import { createApiRateLimiter } from './middleware/api-rate-limiter.js'
 import { errorHandler } from './middleware/error-handler.js'
+import { createAuthService } from './services/auth-service.js'
 import { projectRouter } from './routes/project-routes.js'
 import { referenceRouter } from './routes/reference-routes.js'
 import { serviceRouter } from './routes/service-routes.js'
 import { userRouter } from './routes/user-routes.js'
-import { v1Router } from './routes/v1-routes.js'
+import { createV1Router } from './routes/v1-routes.js'
 
 export function createApp({
   environment = loadEnvironment(),
   enableCourseworkApi = environment.enableCourseworkApi,
   apiRateLimitOptions,
+  loginRateLimitOptions,
+  authService = createAuthService(),
 } = {}) {
   const app = express()
   const allowedOrigins = environment.clientOrigins
@@ -50,6 +54,7 @@ export function createApp({
   app.use(morgan(environment.nodeEnv === 'production' ? 'combined' : 'dev'))
   app.use(express.json({ limit: '100kb' }))
   app.use(express.urlencoded({ extended: false, limit: '100kb' }))
+  app.use(cookieParser())
 
   app.get('/api/health', (_request, response) => {
     response.json({
@@ -61,7 +66,11 @@ export function createApp({
     })
   })
 
-  app.use('/api/v1', createApiRateLimiter(apiRateLimitOptions), v1Router)
+  app.use(
+    '/api/v1',
+    createApiRateLimiter(apiRateLimitOptions),
+    createV1Router({ authService, environment, loginRateLimitOptions }),
+  )
 
   if (enableCourseworkApi) {
     app.use('/api/references', referenceRouter)

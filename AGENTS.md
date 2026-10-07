@@ -121,6 +121,7 @@ Current compatibility decisions:
 
 - Treat coursework fields as the minimum schema rather than the complete product model.
 - Put all new production endpoints under `/api/v1`; keep `GET /api/health` unversioned for hosting health checks.
+- Host the frontend on Vercel and proxy relative `/api` requests to the Render backend with an external rewrite. Browser code must not call the `onrender.com` origin directly. Mirror the relative `/api` topology with the Vite development proxy in the frontend repository.
 - Treat the unversioned coursework CRUD as a frozen assignment contract, not as the production security model. Remove it from `main` or place it behind an explicit development-only compatibility switch once production replacements exist.
 - All portfolio content must be manageable through the authenticated admin API. There is one owner administrator, no public signup, and no production user-management CRUD.
 - Projects will require configurable Home selection, main-project selection, display order, logos, screenshots, roles, date ranges, build breakdowns, and external links.
@@ -138,13 +139,23 @@ Current compatibility decisions:
 - Validate and sanitize all untrusted input on the server.
 - Protect every `/api/v1/admin/*` route with authorization. Do not launch production with public administrative create, update, or delete operations.
 - Use a separately modeled `AdminUser`; never accept a client-controlled role and never provide a public admin bootstrap or signup endpoint.
-- Use revocable opaque admin sessions in secure `HttpOnly` cookies and store only session-token hashes. Expire sessions with a TTL index and verify approved origins for unsafe cookie-authenticated requests.
+- Use revocable opaque admin sessions in host-only `HttpOnly` cookies and store only session-token hashes. Production cookies use `Secure` and `SameSite=Lax` through the same-origin Vercel rewrite; do not set `Domain`. Expire sessions with a TTL index and verify exact approved origins for unsafe cookie-authenticated requests.
+- Send `Cache-Control: private, no-store` on authentication and admin responses. Do not enable Vercel caching for session-specific routes.
 - Provision the initial administrator with a local one-time script against Atlas, without placing the password in source code, command history, or logs.
 - Public submission endpoints require rate limiting, payload limits, spam protection, and a moderation strategy.
 - Restrict CORS to configured frontend origins.
 - Keep public and admin serializers separate. Public serializers must use explicit field allowlists and exclude private email addresses and moderation metadata.
 - Do not log credentials, tokens, password values, or complete sensitive request bodies.
 - Avoid returning implementation details from errors.
+
+Current authentication decisions:
+
+- `AdminUser` is separate from the coursework `User`; its password hash uses bcrypt cost 12 and is excluded from queries by default.
+- `AdminSession` stores only a SHA-256 token hash and expires through a TTL index. Login creates a 256-bit opaque token, revokes the administrator's previous sessions, and creates one seven-day session.
+- Production uses the `__Secure-cd_admin_session` cookie; local development uses `cd_admin_session`. Both are `HttpOnly`, `SameSite=Lax`, scoped to `/api/v1`, and omit `Domain`; production additionally requires `Secure`.
+- `POST /api/v1/auth/login`, `GET /api/v1/auth/session`, and `POST /api/v1/auth/logout` are the only authentication routes. There is no signup route.
+- Login permits five failed attempts per IP in 15 minutes with the current in-memory limiter. Successful logins do not consume the failure allowance. Revisit the store before horizontally scaling the API.
+- `npm run admin:create` is the only initial provisioning path. It requires an interactive terminal, hides password input, enforces 12 characters and the bcrypt 72-byte limit, and refuses to create a second administrator.
 
 ## Testing and Quality
 

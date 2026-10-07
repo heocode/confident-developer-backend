@@ -38,6 +38,7 @@ npm run dev    Start the server with Node watch mode
 npm start      Start the server normally
 npm run lint   Run ESLint
 npm test       Run the Node.js test suite
+npm run admin:create  Interactively provision the single production administrator
 ```
 
 ## Assignment references
@@ -49,6 +50,14 @@ The assignment PDF and supplied Postman collection are stored under `docs/assign
 New portfolio endpoints live under `/api/v1`. `GET /api/v1` reports that the versioned API is available. The application applies security headers, an API rate limit, explicit payload limits, and an allowlist from `CLIENT_ORIGINS`.
 
 The production architecture and planned endpoint boundaries are documented in `docs/architecture/production-backend.md`.
+
+Admin authentication endpoints are:
+
+- `POST /api/v1/auth/login`
+- `GET /api/v1/auth/session`
+- `POST /api/v1/auth/logout`
+
+There is no public signup. Run `npm run admin:create` in an interactive local terminal to provision the single owner account against the configured Atlas database. Never pass its password through command arguments or environment variables.
 
 ## Coursework API
 

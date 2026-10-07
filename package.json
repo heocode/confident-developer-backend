@@ -6,6 +6,7 @@
   "type": "module",
   "main": "server.js",
   "scripts": {
+    "admin:create": "node scripts/create-admin.js",
     "dev": "node --watch server.js",
     "start": "node server.js",
     "lint": "eslint .",
@@ -32,6 +33,7 @@
   "homepage": "https://github.com/heocode/confident-developer-backend#readme",
   "dependencies": {
     "bcryptjs": "^3.0.3",
+    "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
     "dotenv": "^18.0.6",
     "express": "^5.2.1",

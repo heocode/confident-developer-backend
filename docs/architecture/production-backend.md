@@ -24,6 +24,27 @@ The production product includes:
 
 The backend repository does not contain frontend code.
 
+## Deployment Topology
+
+The production frontend is hosted on Vercel and the production backend is hosted separately on Render. Browser code uses relative `/api/v1/...` URLs and does not embed or call the Render origin directly.
+
+Vercel uses an external rewrite as a reverse proxy while preserving the browser-visible URL:
+
+```text
+Browser: https://<frontend-host>/api/v1/...
+                          |
+                          v
+Vercel external rewrite: https://<backend-host>/api/v1/...
+```
+
+This makes the API session first-party from the browser's perspective and avoids depending on third-party cookies between `vercel.app` and `onrender.com`. The frontend repository owns the Vercel rewrite configuration. Local Vite development should mirror this topology by proxying `/api` to `http://localhost:3000`.
+
+Session cookies do not set a `Domain` attribute. Production admin cookies use `HttpOnly`, `Secure`, `SameSite=Lax`, and a restrictive path. Development may disable `Secure` only for local HTTP. Authenticated frontend requests continue to use relative URLs.
+
+Authentication and admin responses must send `Cache-Control: private, no-store` so neither browsers nor the Vercel proxy cache session-specific data. Public GET caching is configured separately and deliberately. Vercel preview origins do not receive admin access automatically; each permitted origin must be explicitly configured.
+
+Render proxy trust and client-IP behavior must be verified in the deployed topology before relying on IP-based controls. Rate limiting is defense in depth and must not be the only authorization boundary.
+
 ## API Lifecycle
 
 ### Coursework API
@@ -93,7 +114,9 @@ GET  /api/v1/auth/session
 
 The portfolio uses a single-owner admin model; it has no public signup or user-management API. The initial admin is provisioned by a local one-time script against Atlas, never through a public bootstrap route.
 
-Authentication uses a high-entropy opaque session token in an `HttpOnly`, `Secure` cookie. Only a hash of the token is stored in an `AdminSession` document. Sessions are revocable, expire automatically through a TTL index, and are rotated after login. Unsafe cookie-authenticated requests require an approved `Origin`; cookie `SameSite` behavior and CORS credentials must match the final frontend/API domains.
+Authentication uses a 256-bit opaque session token in a host-only `HttpOnly` cookie. Production cookies are `Secure` and `SameSite=Lax` because requests reach the API through the same-origin Vercel rewrite. Only a SHA-256 hash of the token is stored in an `AdminSession` document. Login revokes previous sessions for the single administrator and creates one seven-day session. Sessions are revocable and expire automatically through a TTL index. Unsafe cookie-authenticated requests require an exact approved `Origin`.
+
+Login is limited to five failed attempts per IP in 15 minutes. Successful login attempts do not consume the failure allowance. The initial in-memory limiter is suitable for one application process; a shared store is required before horizontal scaling.
 
 ### Admin routes
 
@@ -118,7 +141,7 @@ Schemas will be extended incrementally as their endpoints are implemented. Field
 
 ### AdminUser and AdminSession
 
-`AdminUser` stores normalized email, display name, password hash, active state, and login timestamps. It does not accept a client-controlled role. `AdminSession` stores the admin reference, token hash, expiration, last-used time, and limited audit metadata.
+`AdminUser` stores normalized email, display name, bcrypt password hash, active state, and login timestamps. It does not accept a client-controlled role. `AdminSession` stores the admin reference, SHA-256 token hash, creation time, and expiration time.
 
 ### SiteProfile
 
@@ -181,6 +204,7 @@ Before the production API is publicly launched:
 - reject unknown writable fields;
 - cap JSON, form, and media metadata payload sizes;
 - protect admin mutations with authentication and origin checks;
+- prevent caching of authentication and admin responses with `Cache-Control: private, no-store`;
 - keep public and admin serializers separate;
 - redact sensitive fields from logs and errors;
 - use constant-time comparisons where tokens are checked;
@@ -199,6 +223,8 @@ Mongoose validation remains a persistence safeguard, not the only API validation
 ## External Services and Failure Behavior
 
 - MongoDB Atlas is the source of truth and uses the `portfolio` database.
+- Vercel hosts the frontend and proxies relative `/api` requests to Render through an external rewrite.
+- Render hosts the backend; its direct health endpoint remains available for platform monitoring.
 - Cloudinary stores media binaries; MongoDB stores their metadata and relationships.
 - GitHub is an eventually consistent enrichment source; stale cached data remains usable during GitHub outages.
 - Email delivery, if later added for contact notifications or reference verification, must be hidden behind a service interface and must not block persistence when asynchronous delivery is appropriate.
