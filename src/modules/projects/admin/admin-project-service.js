@@ -1,8 +1,8 @@
 import mongoose from 'mongoose'
 import createError from 'http-errors'
 
-import { MediaAsset } from '../models/media-asset.js'
-import { PortfolioProject } from '../models/portfolio-project.js'
+import { MediaAsset } from '../../../models/media-asset.js'
+import { PortfolioProject } from '../portfolio-project.js'
 
 const MAX_PUBLISHED_FEATURED_PROJECTS = 3
 const ORDERED_PROJECT_ARRAY_FIELDS = Object.freeze(['buildBreakdown', 'links', 'screenshots'])
@@ -85,7 +85,7 @@ function collectMediaAssetIds(project) {
   return [...new Set(ids)]
 }
 
-export function createPortfolioProjectService({
+export function createAdminProjectService({
   projectModel = PortfolioProject,
   mediaAssetModel = MediaAsset,
   runInTransaction = runInMongoTransaction,

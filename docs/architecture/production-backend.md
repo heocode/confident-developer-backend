@@ -24,6 +24,14 @@ The production product includes:
 
 The backend repository does not contain frontend code.
 
+## Code Organization
+
+Production code is moving incrementally from horizontal layer directories to feature-first modules under `src/modules`. Each completed module owns its feature-specific model, services, controllers, routes, validation, and serializers. Shared application configuration and cross-cutting HTTP middleware remain outside feature modules.
+
+The Projects module is located at `src/modules/projects`. Its `PortfolioProject` model is shared at the module root, while authenticated project commands and admin HTTP delivery live under `src/modules/projects/admin`. A public subdirectory is created only when the public Projects API is implemented; empty placeholder modules are not used.
+
+Coursework compatibility code and production features awaiting migration remain in the existing layer directories temporarily. Later refactor stages isolate coursework under its own boundary and move Media and Authentication into their own feature modules. Each structural stage is behavior-preserving and keeps the full test suite passing.
+
 ## Deployment Topology
 
 The production frontend is hosted on Vercel and the production backend is hosted separately on Render. Browser code uses relative `/api/v1/...` URLs and does not embed or call the Render origin directly.

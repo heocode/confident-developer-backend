@@ -40,18 +40,17 @@ The React, TypeScript, and Vite frontend lives in a separate repository. Do not 
 - `server.js`: load environment configuration, connect to MongoDB, start HTTP, and handle graceful shutdown.
 - `src/app.js`: configure Express and register middleware and routes.
 - `src/config`: environment and database configuration.
-- `src/controllers`: HTTP request handlers for each resource.
-- `src/models`: Mongoose schemas and models.
-- `src/routes`: resource routers.
+- `src/modules`: production feature modules. Keep feature-specific models, services, controllers, routes, validation, and serializers together.
+- `src/modules/projects`: the production Projects module. Its shared `PortfolioProject` model is at the module root and protected write behavior is under `admin`.
+- `src/controllers`, `src/models`, `src/routes`, `src/services`, `src/validation`, and `src/utils`: coursework compatibility code and production features not yet moved during the incremental feature-first refactor. Do not add new production feature files to these legacy layer directories.
 - `src/middleware`: shared Express middleware and error handling.
-- `src/services`: business logic and external integrations when extracting it provides value.
-- `src/validation`: route-specific production request schemas.
-- `src/utils`: small shared utilities such as serializers or response helpers.
 - `test`: automated tests.
 - `docs/assignment`: immutable coursework reference files.
 - `postman`: supplied and project-owned API collections.
 
 Do not create empty placeholder modules. Add a directory or file when it gains a concrete responsibility.
+
+Production modules use direct imports rather than barrel files. A module may separate `admin` and `public` delivery code while keeping domain models shared at the module root. Structural moves must preserve API behavior and pass the complete test suite before the next feature is migrated.
 
 The four coursework controllers are configured through `src/utils/crud-controller.js`, and the four routers use `src/routes/create-resource-router.js`. Keep the resource-specific controller and router modules even when behavior is shared. API-boundary normalization belongs in `src/utils/input-normalizers.js`; public Mongoose serialization belongs in `src/utils/schema-options.js`.
 

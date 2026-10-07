@@ -4,7 +4,7 @@ import { describe, it } from 'node:test'
 import mongoose from 'mongoose'
 
 import { MediaAsset } from '../src/models/media-asset.js'
-import { PortfolioProject } from '../src/models/portfolio-project.js'
+import { PortfolioProject } from '../src/modules/projects/portfolio-project.js'
 
 function hasIndex(model, fields, expectedOptions = {}) {
   return model.schema.indexes().some(([indexFields, options]) => {

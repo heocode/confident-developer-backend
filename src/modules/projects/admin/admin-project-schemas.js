@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import { projectLinkIcons, projectStatuses } from '../models/portfolio-project.js'
+import { projectLinkIcons, projectStatuses } from '../portfolio-project.js'
 
 const objectIdSchema = z.string().trim().regex(/^[a-f\d]{24}$/i, 'Invalid resource ID')
 const slugSchema = z

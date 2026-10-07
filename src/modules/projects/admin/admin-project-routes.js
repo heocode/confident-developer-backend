@@ -1,13 +1,13 @@
 import { Router } from 'express'
 
-import { createAdminProjectController } from '../controllers/admin-project-controller.js'
-import { validateRequest } from '../middleware/validate-request.js'
+import { validateRequest } from '../../../middleware/validate-request.js'
+import { createAdminProjectController } from './admin-project-controller.js'
 import {
   adminProjectIdParamsSchema,
   adminProjectListQuerySchema,
   createAdminProjectBodySchema,
   updateAdminProjectBodySchema,
-} from '../validation/admin-project-schemas.js'
+} from './admin-project-schemas.js'
 
 export function createAdminProjectRouter({ projectService }) {
   const router = Router()

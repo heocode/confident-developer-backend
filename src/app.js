@@ -9,10 +9,10 @@ import morgan from 'morgan'
 import { loadEnvironment } from './config/environment.js'
 import { createApiRateLimiter } from './middleware/api-rate-limiter.js'
 import { errorHandler } from './middleware/error-handler.js'
+import { createAdminProjectService } from './modules/projects/admin/admin-project-service.js'
 import { createAuthService } from './services/auth-service.js'
 import { createCloudinaryMediaProvider } from './services/cloudinary-media-provider.js'
 import { createMediaService } from './services/media-service.js'
-import { createPortfolioProjectService } from './services/portfolio-project-service.js'
 import { projectRouter } from './routes/project-routes.js'
 import { referenceRouter } from './routes/reference-routes.js'
 import { serviceRouter } from './routes/service-routes.js'
@@ -27,7 +27,7 @@ export function createApp({
   authService = createAuthService(),
   mediaProvider = createCloudinaryMediaProvider(environment.cloudinary),
   mediaService = createMediaService({ mediaProvider }),
-  projectService = createPortfolioProjectService(),
+  projectService = createAdminProjectService(),
 } = {}) {
   const app = express()
   const allowedOrigins = environment.clientOrigins

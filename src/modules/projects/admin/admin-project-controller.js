@@ -1,4 +1,4 @@
-import { serializeAdminProject } from '../utils/admin-project-serializer.js'
+import { serializeAdminProject } from './admin-project-serializer.js'
 
 export function createAdminProjectController({ projectService }) {
   return {

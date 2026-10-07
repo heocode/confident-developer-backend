@@ -5,9 +5,9 @@ import mongoose from 'mongoose'
 
 import { createApp } from '../src/app.js'
 import { loadEnvironment } from '../src/config/environment.js'
-import { PortfolioProject } from '../src/models/portfolio-project.js'
-import { createPortfolioProjectService } from '../src/services/portfolio-project-service.js'
-import { serializeAdminProject } from '../src/utils/admin-project-serializer.js'
+import { createAdminProjectService } from '../src/modules/projects/admin/admin-project-service.js'
+import { serializeAdminProject } from '../src/modules/projects/admin/admin-project-serializer.js'
+import { PortfolioProject } from '../src/modules/projects/portfolio-project.js'
 
 const frontendOrigin = 'http://localhost:5173'
 const sessionCookie = 'cd_admin_session=project-session-token'
@@ -376,7 +376,7 @@ function createServiceHarness({ featuredCount = 0, activeAssetCount = 1, existin
     },
   }
 
-  const service = createPortfolioProjectService({
+  const service = createAdminProjectService({
     projectModel: ProjectModel,
     mediaAssetModel,
     runInTransaction: (operation) => operation(session),
@@ -386,7 +386,7 @@ function createServiceHarness({ featuredCount = 0, activeAssetCount = 1, existin
   return { service, state, session }
 }
 
-describe('portfolio project service', () => {
+describe('admin project service', () => {
   it('publishes with active media, assigns publishedAt, and replaces the prior primary', async () => {
     const { service, state, session } = createServiceHarness({ featuredCount: 2 })
 

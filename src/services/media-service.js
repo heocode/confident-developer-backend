@@ -1,7 +1,7 @@
 import createError from 'http-errors'
 
 import { MediaAsset } from '../models/media-asset.js'
-import { PortfolioProject } from '../models/portfolio-project.js'
+import { PortfolioProject } from '../modules/projects/portfolio-project.js'
 
 function projectUsageFilter(mediaAssetId) {
   return {
