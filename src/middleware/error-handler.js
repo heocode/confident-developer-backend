@@ -1,4 +1,4 @@
-export function errorHandler(error, _request, response, _next) {
+export function errorHandler(error, request, response, _next) {
   let status = Number.isInteger(error.status) ? error.status : 500
   let errorMessage = error.message
 
@@ -22,17 +22,29 @@ export function errorHandler(error, _request, response, _next) {
   } else if (error.type === 'entity.parse.failed') {
     status = 400
     errorMessage = 'Request body contains invalid JSON'
+  } else if (error.name === 'ZodError') {
+    status = 400
+    errorMessage = 'Request validation failed'
   }
 
-  const isProduction = process.env.NODE_ENV === 'production'
+  const isProduction = request.app.get('env') === 'production'
   const message = status === 500 && isProduction ? 'Internal server error' : errorMessage
 
   if (status >= 500) {
     console.error(error)
   }
 
-  response.status(status).json({
+  const errorResponse = {
     success: false,
     message,
-  })
+  }
+
+  if (error.name === 'ZodError') {
+    errorResponse.details = error.issues.map((issue) => ({
+      field: issue.path.join('.'),
+      message: issue.message,
+    }))
+  }
+
+  response.status(status).json(errorResponse)
 }

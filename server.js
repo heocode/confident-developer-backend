@@ -6,17 +6,17 @@ import mongoose from 'mongoose'
 
 import { createApp } from './src/app.js'
 import { connectToDatabase } from './src/config/database.js'
-import { getPort } from './src/config/environment.js'
+import { loadEnvironment } from './src/config/environment.js'
 
-const port = getPort(process.env.PORT)
+const environment = loadEnvironment()
 
 async function startServer() {
-  await connectToDatabase(process.env.MONGODB_URI)
+  await connectToDatabase(environment.mongodbUri)
 
-  const server = createServer(createApp())
+  const server = createServer(createApp({ environment }))
 
-  server.listen(port, () => {
-    console.log(`Server listening on port ${port}`)
+  server.listen(environment.port, () => {
+    console.log(`Server listening on port ${environment.port}`)
   })
 
   const shutdown = async (signal) => {

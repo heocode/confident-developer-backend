@@ -1,29 +1,42 @@
 import cors from 'cors'
 import express from 'express'
+import helmet from 'helmet'
 import createError from 'http-errors'
 import mongoose from 'mongoose'
 import morgan from 'morgan'
 
+import { loadEnvironment } from './config/environment.js'
+import { createApiRateLimiter } from './middleware/api-rate-limiter.js'
 import { errorHandler } from './middleware/error-handler.js'
 import { projectRouter } from './routes/project-routes.js'
 import { referenceRouter } from './routes/reference-routes.js'
 import { serviceRouter } from './routes/service-routes.js'
 import { userRouter } from './routes/user-routes.js'
+import { v1Router } from './routes/v1-routes.js'
 
-function getAllowedOrigins() {
-  return (process.env.CLIENT_ORIGIN ?? 'http://localhost:5173')
-    .split(',')
-    .map((origin) => origin.trim())
-    .filter(Boolean)
-}
-
-export function createApp() {
+export function createApp({
+  environment = loadEnvironment(),
+  enableCourseworkApi = environment.enableCourseworkApi,
+  apiRateLimitOptions,
+} = {}) {
   const app = express()
-  const allowedOrigins = getAllowedOrigins()
+  const allowedOrigins = environment.clientOrigins
 
   app.disable('x-powered-by')
+  app.set('env', environment.nodeEnv)
+  app.set('trust proxy', environment.trustProxy)
+  app.use(
+    helmet({
+      contentSecurityPolicy: {
+        directives: {
+          upgradeInsecureRequests: environment.nodeEnv === 'development' ? null : [],
+        },
+      },
+    }),
+  )
   app.use(
     cors({
+      credentials: true,
       origin(origin, callback) {
         if (!origin || allowedOrigins.includes(origin)) {
           callback(null, true)
@@ -34,9 +47,9 @@ export function createApp() {
       },
     }),
   )
-  app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'))
+  app.use(morgan(environment.nodeEnv === 'production' ? 'combined' : 'dev'))
   app.use(express.json({ limit: '100kb' }))
-  app.use(express.urlencoded({ extended: false }))
+  app.use(express.urlencoded({ extended: false, limit: '100kb' }))
 
   app.get('/api/health', (_request, response) => {
     response.json({
@@ -48,10 +61,14 @@ export function createApp() {
     })
   })
 
-  app.use('/api/references', referenceRouter)
-  app.use('/api/projects', projectRouter)
-  app.use('/api/services', serviceRouter)
-  app.use('/api/users', userRouter)
+  app.use('/api/v1', createApiRateLimiter(apiRateLimitOptions), v1Router)
+
+  if (enableCourseworkApi) {
+    app.use('/api/references', referenceRouter)
+    app.use('/api/projects', projectRouter)
+    app.use('/api/services', serviceRouter)
+    app.use('/api/users', userRouter)
+  }
 
   app.use((_request, _response, next) => {
     next(createError(404, 'Route not found'))

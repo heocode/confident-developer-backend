@@ -57,10 +57,14 @@ The four coursework controllers are configured through `src/utils/crud-controlle
 ## Express
 
 - Configure `http-errors`, Morgan, and CORS as required by the assignment.
+- Production `/api/v1` uses Helmet, explicit credential-aware CORS origins, explicit body limits, and a shared IP rate limiter with standard rate-limit headers.
+- Load and validate runtime settings through `src/config/environment.js`. Production requires explicit `CLIENT_ORIGINS`; configure `TRUST_PROXY` as a hop count instead of broadly trusting forwarded addresses.
+- Keep the unversioned coursework routers disabled by default on `main`; `ENABLE_COURSEWORK_API=true` is an explicit compatibility mode.
 - Register the global error handler after all routes and other middleware.
 - Disable unnecessary framework-identifying headers.
 - Keep request body limits explicit.
 - Use conventional HTTP status codes and JSON responses.
+- Validate production request bodies, path parameters, and query parameters with the shared Zod middleware. Controllers consume `request.validated`; use strict route schemas to reject unknown writable fields.
 - Keep controllers thin when business logic becomes substantial.
 - Return a consistent error shape and never leak production stack traces.
 - Treat Mongoose validation and casting failures as client errors with status `400`; keep messages field-specific but do not expose rejected values or model internals.
@@ -150,6 +154,7 @@ Current compatibility decisions:
 - Run the supplied Postman collection against a clean or controlled database before taking submission screenshots.
 - The supplied collection contains request-chaining scripts but no `pm.test` assertions. Keep it unchanged and add automated coverage separately.
 - ESLint, automated tests, and relevant API checks must pass before a task is complete.
+- Tests that exercise the frozen coursework contract must enable its routers explicitly when constructing the Express application.
 
 ## Git Workflow
 

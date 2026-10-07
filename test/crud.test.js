@@ -90,7 +90,7 @@ describe('coursework CRUD API', () => {
     for (const model of models) adapters.set(model, installInMemoryModel(model))
 
     await new Promise((resolve, reject) => {
-      server = createApp().listen(0, '127.0.0.1')
+      server = createApp({ enableCourseworkApi: true }).listen(0, '127.0.0.1')
       server.once('listening', resolve)
       server.once('error', reject)
     })
