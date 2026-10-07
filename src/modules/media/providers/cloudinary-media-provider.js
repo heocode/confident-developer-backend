@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { v2 as cloudinary } from 'cloudinary'
 import createError from 'http-errors'
 
-import { MAX_IMAGE_BYTES, MAX_IMAGE_DIMENSION } from '../models/media-asset.js'
+import { MAX_IMAGE_BYTES, MAX_IMAGE_DIMENSION } from '../media-asset.js'
 
 const ALLOWED_IMAGE_FORMATS = Object.freeze(['jpg', 'jpeg', 'png', 'webp', 'avif'])
 const MANAGED_PUBLIC_ID_PREFIX = 'portfolio/images/'

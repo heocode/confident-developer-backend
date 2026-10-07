@@ -3,7 +3,7 @@ import { describe, it } from 'node:test'
 
 import mongoose from 'mongoose'
 
-import { MediaAsset } from '../src/models/media-asset.js'
+import { MediaAsset } from '../src/modules/media/media-asset.js'
 import { PortfolioProject } from '../src/modules/projects/portfolio-project.js'
 
 function hasIndex(model, fields, expectedOptions = {}) {

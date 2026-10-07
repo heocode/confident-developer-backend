@@ -5,9 +5,9 @@ import { noStore } from '../middleware/no-store.js'
 import { requireAdminSession } from '../middleware/require-admin-session.js'
 import { requireTrustedOrigin } from '../middleware/require-trusted-origin.js'
 import { validateRequest } from '../middleware/validate-request.js'
+import { createAdminMediaRouter } from '../modules/media/admin/admin-media-routes.js'
 import { createAdminProjectRouter } from '../modules/projects/admin/admin-project-routes.js'
 import { serializeAdmin } from '../utils/admin-serializer.js'
-import { createAdminMediaRouter } from './admin-media-routes.js'
 import { createAuthRouter } from './auth-routes.js'
 
 export function createV1Router({ authService, mediaService, projectService, environment, loginRateLimitOptions }) {

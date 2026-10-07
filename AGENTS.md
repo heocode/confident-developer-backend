@@ -42,6 +42,7 @@ The React, TypeScript, and Vite frontend lives in a separate repository. Do not 
 - `src/config`: environment and database configuration.
 - `src/modules`: production feature modules. Keep feature-specific models, services, controllers, routes, validation, and serializers together.
 - `src/modules/projects`: the production Projects module. Its shared `PortfolioProject` model is at the module root and protected write behavior is under `admin`.
+- `src/modules/media`: the production Media module. Shared asset persistence and lifecycle services live at the module root, provider adapters live under `providers`, and protected HTTP delivery lives under `admin`.
 - `src/controllers`, `src/models`, `src/routes`, `src/services`, `src/validation`, and `src/utils`: coursework compatibility code and production features not yet moved during the incremental feature-first refactor. Do not add new production feature files to these legacy layer directories.
 - `src/middleware`: shared Express middleware and error handling.
 - `test`: automated tests.
@@ -153,7 +154,7 @@ Current project persistence decisions:
 Current media decisions:
 
 - Protected media management is available under `/api/v1/admin/media`; it includes signed-upload descriptors, idempotent registration, paginated listing, usage-aware detail, alt updates, and explicit deletion.
-- Cloudinary integration is isolated behind `cloudinary-media-provider.js`. Domain services and controllers consume the provider interface rather than importing the Cloudinary SDK.
+- Cloudinary integration is isolated behind `src/modules/media/providers/cloudinary-media-provider.js`. Domain services and controllers consume the provider interface rather than importing the Cloudinary SDK.
 - Signed browser uploads use unique managed public IDs, `overwrite=false`, SHA-256 signatures, an application tag, and an image-format allowlist. The API secret never appears in responses.
 - `MediaAsset.providerAssetId` stores Cloudinary's immutable `asset_id`. Registration fetches authoritative metadata through the provider instead of trusting URL, dimensions, format, or byte counts from the browser.
 - Media lists use page-based pagination with default limit 24, maximum limit 100, and descending `createdAt`/`_id` ordering.

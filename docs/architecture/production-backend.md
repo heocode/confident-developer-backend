@@ -30,7 +30,9 @@ Production code is moving incrementally from horizontal layer directories to fea
 
 The Projects module is located at `src/modules/projects`. Its `PortfolioProject` model is shared at the module root, while authenticated project commands and admin HTTP delivery live under `src/modules/projects/admin`. A public subdirectory is created only when the public Projects API is implemented; empty placeholder modules are not used.
 
-Coursework compatibility code and production features awaiting migration remain in the existing layer directories temporarily. Later refactor stages isolate coursework under its own boundary and move Media and Authentication into their own feature modules. Each structural stage is behavior-preserving and keeps the full test suite passing.
+The Media module is located at `src/modules/media`. Shared asset persistence and lifecycle behavior live at the module root, Cloudinary is isolated under `providers`, and authenticated media HTTP delivery lives under `admin`.
+
+Coursework compatibility code and production features awaiting migration remain in the existing layer directories temporarily. Later refactor stages isolate coursework under its own boundary and move Authentication into its own feature module. Each structural stage is behavior-preserving and keeps the full test suite passing.
 
 ## Deployment Topology
 

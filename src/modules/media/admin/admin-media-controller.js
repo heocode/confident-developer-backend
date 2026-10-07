@@ -1,4 +1,4 @@
-import { serializeAdminMediaAsset } from '../utils/admin-media-serializer.js'
+import { serializeAdminMediaAsset } from './admin-media-serializer.js'
 
 export function createAdminMediaController({ mediaService }) {
   return {

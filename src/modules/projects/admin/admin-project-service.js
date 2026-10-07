@@ -1,7 +1,7 @@
 import mongoose from 'mongoose'
 import createError from 'http-errors'
 
-import { MediaAsset } from '../../../models/media-asset.js'
+import { MediaAsset } from '../../media/media-asset.js'
 import { PortfolioProject } from '../portfolio-project.js'
 
 const MAX_PUBLISHED_FEATURED_PROJECTS = 3

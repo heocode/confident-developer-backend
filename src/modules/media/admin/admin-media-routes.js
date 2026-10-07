@@ -1,14 +1,14 @@
 import { Router } from 'express'
 
-import { createAdminMediaController } from '../controllers/admin-media-controller.js'
-import { validateRequest } from '../middleware/validate-request.js'
+import { validateRequest } from '../../../middleware/validate-request.js'
+import { createAdminMediaController } from './admin-media-controller.js'
 import {
   adminMediaIdParamsSchema,
   adminMediaListQuerySchema,
   createMediaUploadSignatureBodySchema,
   registerAdminMediaBodySchema,
   updateAdminMediaBodySchema,
-} from '../validation/admin-media-schemas.js'
+} from './admin-media-schemas.js'
 
 export function createAdminMediaRouter({ mediaService }) {
   const router = Router()
