@@ -13,6 +13,7 @@ The React, TypeScript, and Vite frontend lives in a separate repository. Do not 
 - `docs/assignment/Assignment 2- Backend CRUD with MongoDB.pdf` defines the coursework rubric.
 - `postman/Assignment 2.postman_collection.json` defines the supplied request sequence and payloads.
 - The approved portfolio designs define the additional data needed by the production UI.
+- `docs/architecture/production-backend.md` defines the approved production API direction, access boundaries, data ownership, and implementation order.
 - When the PDF and Postman payloads differ, preserve the required PDF fields while accepting and normalizing the supplied Postman payloads.
 - Do not modify the supplied Postman collection. Add separate tests when more coverage is required.
 
@@ -115,19 +116,29 @@ Current compatibility decisions:
 ## Production Extensions
 
 - Treat coursework fields as the minimum schema rather than the complete product model.
+- Put all new production endpoints under `/api/v1`; keep `GET /api/health` unversioned for hosting health checks.
+- Treat the unversioned coursework CRUD as a frozen assignment contract, not as the production security model. Remove it from `main` or place it behind an explicit development-only compatibility switch once production replacements exist.
+- All portfolio content must be manageable through the authenticated admin API. There is one owner administrator, no public signup, and no production user-management CRUD.
 - Projects will require configurable Home selection, main-project selection, display order, logos, screenshots, roles, date ranges, build breakdowns, and external links.
-- References will require ratings, moderation state, pagination, deletion ownership, and abuse prevention.
+- References will require three ratings, moderation state, pagination, deletion ownership, and abuse prevention. New submissions start pending. Submitter email is private and must never appear in public responses.
 - Services will require display order and UI metadata such as icons and colors.
-- Contact inquiries, profile posts, GitHub data, likes, and views should remain separate concerns rather than being forced into the four coursework resources.
+- Contact inquiries, profile posts, GitHub data, media assets, likes, and views remain separate concerns rather than being forced into the four coursework resources.
+- Profile posts form a first-party personal mini-blog. Likes and views record real, idempotent or time-deduplicated interactions rather than decorative seed values.
+- Fetch GitHub data through the backend and persist a cache snapshot; public frontend requests must not depend on a live GitHub request.
+- Use Cloudinary Free initially through a provider-neutral media service. Use signed direct browser uploads, keep secrets server-side, store only media metadata in MongoDB, and constrain formats, transformations, and upload sizes.
 - Extend schemas and contracts incrementally when the associated product feature is implemented.
 
 ## Security
 
 - Never store plaintext passwords. Hash passwords and omit password hashes from every API response.
 - Validate and sanitize all untrusted input on the server.
-- Before production launch, protect administrative create, update, and delete operations with authorization even if coursework testing initially requires open CRUD endpoints.
+- Protect every `/api/v1/admin/*` route with authorization. Do not launch production with public administrative create, update, or delete operations.
+- Use a separately modeled `AdminUser`; never accept a client-controlled role and never provide a public admin bootstrap or signup endpoint.
+- Use revocable opaque admin sessions in secure `HttpOnly` cookies and store only session-token hashes. Expire sessions with a TTL index and verify approved origins for unsafe cookie-authenticated requests.
+- Provision the initial administrator with a local one-time script against Atlas, without placing the password in source code, command history, or logs.
 - Public submission endpoints require rate limiting, payload limits, spam protection, and a moderation strategy.
 - Restrict CORS to configured frontend origins.
+- Keep public and admin serializers separate. Public serializers must use explicit field allowlists and exclude private email addresses and moderation metadata.
 - Do not log credentials, tokens, password values, or complete sensitive request bodies.
 - Avoid returning implementation details from errors.
 
@@ -142,6 +153,7 @@ Current compatibility decisions:
 
 ## Git Workflow
 
+- The submitted coursework is frozen at tag `assignment-2-submission` and branch `assignment-2`. Production work continues on `main`; keep the grading Render service pinned to `assignment-2`.
 - Before every commit, review and update `AGENTS.md` so it reflects current architecture, API behavior, workflow requirements, and known constraints.
 - If no update is needed, explicitly verify that `AGENTS.md` remains accurate before committing.
 - Include relevant `AGENTS.md` changes in the same commit as the implementation that required them.
