@@ -1,8 +1,8 @@
-import { serializeAdmin } from '../utils/admin-serializer.js'
+import { serializeAdmin } from './admin-serializer.js'
 import {
   getAdminSessionClearOptions,
   getAdminSessionCookie,
-} from '../utils/admin-session-cookie.js'
+} from './admin-session-cookie.js'
 
 export function createAuthController({ authService, environment }) {
   const cookie = getAdminSessionCookie(environment)

@@ -3,9 +3,9 @@ import { createHash, randomBytes } from 'node:crypto'
 import bcrypt from 'bcryptjs'
 import createError from 'http-errors'
 
-import { AdminSession } from '../models/admin-session.js'
-import { AdminUser } from '../models/admin-user.js'
-import { ADMIN_SESSION_TTL_MS } from '../utils/admin-session-cookie.js'
+import { AdminSession } from './admin-session.js'
+import { ADMIN_SESSION_TTL_MS } from './admin-session-cookie.js'
+import { AdminUser } from './admin-user.js'
 
 const DUMMY_PASSWORD_HASH = '$2b$12$MHjYVN0mS2LOjgZ3wPqlFubMRt02.vmeEE/uIEoteh2uOPyQNwsLq'
 const INVALID_CREDENTIALS_MESSAGE = 'Invalid email or password'

@@ -5,9 +5,9 @@ import createError from 'http-errors'
 
 import { createApp } from '../src/app.js'
 import { loadEnvironment } from '../src/config/environment.js'
-import { AdminSession } from '../src/models/admin-session.js'
-import { AdminUser } from '../src/models/admin-user.js'
-import { getAdminSessionCookie } from '../src/utils/admin-session-cookie.js'
+import { AdminSession } from '../src/modules/auth/admin-session.js'
+import { getAdminSessionCookie } from '../src/modules/auth/admin-session-cookie.js'
+import { AdminUser } from '../src/modules/auth/admin-user.js'
 
 const frontendOrigin = 'http://localhost:5173'
 const admin = {

@@ -32,7 +32,9 @@ The Projects module is located at `src/modules/projects`. Its `PortfolioProject`
 
 The Media module is located at `src/modules/media`. Shared asset persistence and lifecycle behavior live at the module root, Cloudinary is isolated under `providers`, and authenticated media HTTP delivery lives under `admin`.
 
-Coursework compatibility code and production features awaiting migration remain in the existing layer directories temporarily. Later refactor stages isolate coursework under its own boundary and move Authentication into its own feature module. Each structural stage is behavior-preserving and keeps the full test suite passing.
+The Authentication module is located at `src/modules/auth`. It owns administrator and session persistence, authentication business logic, cookie policy, login validation, safe admin serialization, authentication routes, and the middleware used to protect the admin API. Cross-cutting rate limiting, trusted-origin checks, request validation, no-store policy, and global error handling remain shared middleware.
+
+Coursework compatibility code and the production v1 composition router remain in the existing layer directories temporarily. Later refactor stages isolate coursework under its own boundary and finalize application composition. Each structural stage is behavior-preserving and keeps the full test suite passing.
 
 ## Deployment Topology
 

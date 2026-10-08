@@ -41,9 +41,11 @@ The React, TypeScript, and Vite frontend lives in a separate repository. Do not 
 - `src/app.js`: configure Express and register middleware and routes.
 - `src/config`: environment and database configuration.
 - `src/modules`: production feature modules. Keep feature-specific models, services, controllers, routes, validation, and serializers together.
+- `src/modules/auth`: administrator identity, opaque sessions, cookie policy, authentication service and HTTP delivery, login validation, safe admin serialization, and session middleware.
 - `src/modules/projects`: the production Projects module. Its shared `PortfolioProject` model is at the module root and protected write behavior is under `admin`.
 - `src/modules/media`: the production Media module. Shared asset persistence and lifecycle services live at the module root, provider adapters live under `providers`, and protected HTTP delivery lives under `admin`.
-- `src/controllers`, `src/models`, `src/routes`, `src/services`, `src/validation`, and `src/utils`: coursework compatibility code and production features not yet moved during the incremental feature-first refactor. Do not add new production feature files to these legacy layer directories.
+- `src/controllers`, `src/models`, and `src/utils`: frozen coursework compatibility code awaiting its own module boundary.
+- `src/routes`: coursework routers plus the production v1 composition router until the final structural refactor. Do not add new feature-specific production routers here.
 - `src/middleware`: shared Express middleware and error handling.
 - `test`: automated tests.
 - `docs/assignment`: immutable coursework reference files.

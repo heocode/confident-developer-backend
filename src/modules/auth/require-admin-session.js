@@ -1,4 +1,4 @@
-import { getAdminSessionCookie } from '../utils/admin-session-cookie.js'
+import { getAdminSessionCookie } from './admin-session-cookie.js'
 
 export function requireAdminSession({ authService, environment }) {
   return async (request, _response, next) => {

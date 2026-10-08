@@ -2,13 +2,13 @@ import { Router } from 'express'
 import { z } from 'zod'
 
 import { noStore } from '../middleware/no-store.js'
-import { requireAdminSession } from '../middleware/require-admin-session.js'
 import { requireTrustedOrigin } from '../middleware/require-trusted-origin.js'
 import { validateRequest } from '../middleware/validate-request.js'
+import { serializeAdmin } from '../modules/auth/admin-serializer.js'
+import { createAuthRouter } from '../modules/auth/auth-routes.js'
+import { requireAdminSession } from '../modules/auth/require-admin-session.js'
 import { createAdminMediaRouter } from '../modules/media/admin/admin-media-routes.js'
 import { createAdminProjectRouter } from '../modules/projects/admin/admin-project-routes.js'
-import { serializeAdmin } from '../utils/admin-serializer.js'
-import { createAuthRouter } from './auth-routes.js'
 
 export function createV1Router({ authService, mediaService, projectService, environment, loginRateLimitOptions }) {
   const router = Router()

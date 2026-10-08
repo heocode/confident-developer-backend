@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
-import { createAuthService, hashSessionToken } from '../src/services/auth-service.js'
-import { ADMIN_SESSION_TTL_MS } from '../src/utils/admin-session-cookie.js'
+import { ADMIN_SESSION_TTL_MS } from '../src/modules/auth/admin-session-cookie.js'
+import { createAuthService, hashSessionToken } from '../src/modules/auth/auth-service.js'
 
 const PASSWORD_HASH = '$2b$12$MHjYVN0mS2LOjgZ3wPqlFubMRt02.vmeEE/uIEoteh2uOPyQNwsLq'
 

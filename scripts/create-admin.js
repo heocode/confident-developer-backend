@@ -7,7 +7,7 @@ import bcrypt from 'bcryptjs'
 import mongoose from 'mongoose'
 
 import { connectToDatabase } from '../src/config/database.js'
-import { AdminUser } from '../src/models/admin-user.js'
+import { AdminUser } from '../src/modules/auth/admin-user.js'
 
 function promptHidden(question) {
   if (!input.isTTY || !output.isTTY || typeof input.setRawMode !== 'function') {
