@@ -18,6 +18,7 @@ import { createAuthService } from './modules/auth/auth-service.js'
 import { createMediaService } from './modules/media/media-service.js'
 import { createCloudinaryMediaProvider } from './modules/media/providers/cloudinary-media-provider.js'
 import { createAdminProjectService } from './modules/projects/admin/admin-project-service.js'
+import { createPublicProjectService } from './modules/projects/public/public-project-service.js'
 
 export function createApp({
   environment = loadEnvironment(),
@@ -28,6 +29,7 @@ export function createApp({
   mediaProvider = createCloudinaryMediaProvider(environment.cloudinary),
   mediaService = createMediaService({ mediaProvider }),
   projectService = createAdminProjectService(),
+  publicProjectService = createPublicProjectService(),
 } = {}) {
   const app = express()
   const allowedOrigins = environment.clientOrigins
@@ -75,7 +77,14 @@ export function createApp({
   app.use(
     '/api/v1',
     createApiRateLimiter(apiRateLimitOptions),
-    createV1Router({ authService, mediaService, projectService, environment, loginRateLimitOptions }),
+    createV1Router({
+      authService,
+      mediaService,
+      projectService,
+      publicProjectService,
+      environment,
+      loginRateLimitOptions,
+    }),
   )
 
   if (enableCourseworkApi) {

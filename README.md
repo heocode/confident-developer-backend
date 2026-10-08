@@ -52,6 +52,14 @@ New portfolio endpoints live under `/api/v1`. `GET /api/v1` reports that the ver
 
 The production architecture and planned endpoint boundaries are documented in `docs/architecture/production-backend.md`.
 
+Public project endpoints are:
+
+- `GET /api/v1/projects`
+- `GET /api/v1/projects?placement=home`
+- `GET /api/v1/projects/:slug`
+
+They return only published projects. The collection is ordered for the Projects page by default, while `placement=home` returns featured Home projects in their configured order. Detail lookup uses the public slug rather than a MongoDB ID. Successful public responses are briefly cacheable by shared CDNs; validation and not-found errors are not.
+
 Admin authentication endpoints are:
 
 - `POST /api/v1/auth/login`

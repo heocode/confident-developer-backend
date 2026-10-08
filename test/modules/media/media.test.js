@@ -294,6 +294,23 @@ describe('Cloudinary media provider', () => {
     assert.equal(state.configurations[0].signature_algorithm, 'sha256')
   })
 
+  it('creates optimized delivery URLs from fixed public presets', () => {
+    const { client } = createFakeCloudinaryClient()
+    const provider = createCloudinaryMediaProvider(configuration, { client })
+
+    assert.equal(
+      provider.createDeliveryUrl({
+        secureUrl: 'https://res.cloudinary.com/example/image/upload/v123/generated.webp',
+        preset: 'logo',
+      }),
+      'https://res.cloudinary.com/example/image/upload/c_limit,w_512,h_512,f_auto,q_auto/v123/generated.webp',
+    )
+    assert.throws(
+      () => provider.createDeliveryUrl({ secureUrl: 'https://example.com/image.webp', preset: 'logo' }),
+      (error) => error.status === 500,
+    )
+  })
+
   it('loads authoritative metadata by immutable asset ID', async () => {
     const { client, state } = createFakeCloudinaryClient()
     const provider = createCloudinaryMediaProvider(configuration, { client })
@@ -405,6 +422,9 @@ function createMediaServiceHarness({ asset = null, projectCount = 0, assets = []
   }
   const mediaProvider = {
     name: 'cloudinary',
+    createDeliveryUrl({ secureUrl, preset }) {
+      return `${secureUrl}?preset=${preset}`
+    },
     createUploadDescriptor() {
       return { provider: 'cloudinary' }
     },
@@ -434,6 +454,15 @@ function createMediaServiceHarness({ asset = null, projectCount = 0, assets = []
 }
 
 describe('media service', () => {
+  it('delegates public delivery URLs through the configured provider', () => {
+    const { service } = createMediaServiceHarness()
+
+    assert.equal(
+      service.createDeliveryUrl(mediaData(), 'homePreview'),
+      'https://res.cloudinary.com/example/image/upload/portfolio/images/example.webp?preset=homePreview',
+    )
+  })
+
   it('registers authoritative provider metadata and treats retries as idempotent', async () => {
     const fresh = createMediaServiceHarness()
     const first = await fresh.service.registerAsset({

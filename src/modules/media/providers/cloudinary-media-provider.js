@@ -9,6 +9,11 @@ const ALLOWED_IMAGE_FORMATS = Object.freeze(['jpg', 'jpeg', 'png', 'webp', 'avif
 const MANAGED_PUBLIC_ID_PREFIX = 'portfolio/images/'
 const MANAGED_TAG = 'confident-developer-managed'
 const SIGNATURE_TTL_SECONDS = 60 * 60
+const DELIVERY_TRANSFORMATIONS = Object.freeze({
+  logo: 'c_limit,w_512,h_512,f_auto,q_auto',
+  homePreview: 'c_limit,w_1600,h_1200,f_auto,q_auto',
+  screenshot: 'c_limit,w_2000,h_2000,f_auto,q_auto',
+})
 
 function unavailableError() {
   return createError(503, 'Media provider is not configured')
@@ -20,6 +25,26 @@ function providerError() {
 
 function isNotFoundError(error) {
   return error?.http_code === 404 || error?.error?.http_code === 404
+}
+
+function createDeliveryUrl(secureUrl, preset) {
+  const transformation = DELIVERY_TRANSFORMATIONS[preset]
+  if (!transformation) throw createError(500, 'Media delivery preset is not configured')
+
+  const url = new URL(secureUrl)
+  const uploadPath = '/image/upload/'
+  const uploadPosition = url.pathname.indexOf(uploadPath)
+
+  if (url.protocol !== 'https:' || uploadPosition === -1) {
+    throw createError(500, 'Media delivery URL is invalid')
+  }
+
+  const transformationPosition = uploadPosition + uploadPath.length
+  url.pathname = `${url.pathname.slice(0, transformationPosition)}${transformation}/${url.pathname.slice(
+    transformationPosition,
+  )}`
+
+  return url.toString()
 }
 
 export function createCloudinaryMediaProvider(
@@ -43,6 +68,10 @@ export function createCloudinaryMediaProvider(
   return {
     name: 'cloudinary',
     isConfigured: Boolean(configuration),
+
+    createDeliveryUrl({ secureUrl, preset }) {
+      return createDeliveryUrl(secureUrl, preset)
+    },
 
     createUploadDescriptor() {
       requireConfiguration()

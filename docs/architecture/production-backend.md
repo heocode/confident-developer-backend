@@ -77,12 +77,20 @@ Collection endpoints use deterministic ordering and cursor or page-based paginat
 
 ### Public read routes
 
-Planned routes:
+Implemented project routes:
+
+```text
+GET /api/v1/projects
+GET /api/v1/projects?placement=home
+GET /api/v1/projects/:slug
+```
+
+The default collection contains published projects ordered by `projectsPageOrder` and `_id`. Home placement contains only published featured projects ordered by `home.order` and `_id`. Both use the same card representation, including links; detail lookup uses the public slug and adds `scope` plus ordered screenshots. The frontend may map `/projects/:slug` to the same accordion-style Projects page while the API remains under `/api/v1/projects/:slug`.
+
+Remaining planned routes:
 
 ```text
 GET /api/v1/profile
-GET /api/v1/projects
-GET /api/v1/projects/:slug
 GET /api/v1/services
 GET /api/v1/services/:slug
 GET /api/v1/references
@@ -92,6 +100,8 @@ GET /api/v1/github-summary
 ```
 
 Only published projects, services, posts, and approved references are returned. List responses expose only the fields needed by their cards; detail routes may expose richer public fields.
+
+Successful public project responses send `Cache-Control: public, max-age=0, s-maxage=60, stale-while-revalidate=300` and `CDN-Cache-Control: max-age=60, stale-while-revalidate=300`. Express sets these headers only after successful service and serialization work, so validation, not-found, and server errors are not cached. The dedicated CDN header makes caching explicit for Vercel external rewrites; an existing Vercel project must still verify or enable external-origin caching in its CDN configuration. Unpublish/archive changes are therefore eventually visible within the bounded cache window rather than instantly purged; targeted Vercel cache invalidation can be added later if immediate emergency removal becomes a product requirement.
 
 ### Public write routes
 
@@ -249,6 +259,8 @@ After upload, the frontend sends only the provider name, returned immutable asse
 Deletion first checks project logo, Home preview, and screenshot references. A referenced asset returns `409`. An unused asset is persisted as `pendingDeletion` before the provider call; its MongoDB metadata is removed only after Cloudinary reports deletion or that the provider asset is already absent. A failed provider request leaves the pending record available for retry.
 
 Application code accesses storage through a small provider-neutral media service so Cloudinary can later be replaced by Cloudflare R2 or another provider without rewriting controllers or schemas.
+
+Public serializers ask that service for named `logo`, `homePreview`, or `screenshot` delivery presets. The Cloudinary adapter turns those presets into bounded automatic-format and automatic-quality transformations. Public responses contain the resulting HTTPS URL, dimensions, and contextual alt text but no provider asset ID or provider lifecycle metadata.
 
 To preserve the free tier:
 

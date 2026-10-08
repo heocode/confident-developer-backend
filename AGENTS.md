@@ -152,6 +152,10 @@ Current project persistence decisions:
 - Every referenced media document must exist with `active` status when a project is saved. `publishedAt` is server-owned and is assigned on first publication.
 - Deleting a project deletes only its document. It never deletes referenced `MediaAsset` documents or provider files; media lifecycle is managed separately.
 - `projectsPageOrder` is distinct from Home order; avoid the ambiguous name `archiveOrder` because `archived` is also a publication state.
+- Public project reads are available at `GET /api/v1/projects`, `GET /api/v1/projects?placement=home`, and `GET /api/v1/projects/:slug`. They expose only published projects through an explicit public serializer; draft, archived, media-incomplete, and unknown detail records are indistinguishable `404` responses.
+- The public Projects list sorts by `projectsPageOrder` then `_id`. Home placement requires `home.featured: true` and sorts by `home.order` then `_id`. The common list representation includes links and Home card data; detail adds `scope` and ordered screenshots.
+- Public project routes accept no MongoDB ID. Query and slug input are strict, and unknown query parameters are rejected.
+- Successful public project responses send browser-revalidating `Cache-Control` plus `CDN-Cache-Control` for a 60-second shared-cache lifetime and five-minute stale-while-revalidate window. Error responses are not cacheable. The frontend deployment must verify external-rewrite caching and explicitly opt in if it predates Vercel's default external-origin caching behavior.
 
 Current media decisions:
 
@@ -163,6 +167,7 @@ Current media decisions:
 - Admin media serializers expose the delivery URL and useful metadata but omit provider asset IDs and persistence internals.
 - Media deletion is blocked while any project references the asset. Unused assets become `pendingDeletion` before provider deletion; metadata is removed only after provider deletion succeeds or reports the asset already absent.
 - Cloudinary environment values are optional as a complete group so the application can start before provider setup. Media provider operations return `503` until all three values are configured.
+- Public media serialization uses provider-neutral `logo`, `homePreview`, and `screenshot` delivery presets. Cloudinary-specific URL transformations remain inside its provider adapter; frontend code must not construct provider URLs.
 
 ## Security
 

@@ -22,9 +22,16 @@ export function createMediaService({
     if (!mediaProvider || providerName !== mediaProvider.name) {
       throw createError(400, 'Unsupported media provider')
     }
+
+    return mediaProvider
   }
 
   return {
+    createDeliveryUrl(asset, preset) {
+      const provider = requireProvider(asset.provider)
+      return provider.createDeliveryUrl({ secureUrl: asset.secureUrl, preset })
+    },
+
     createUploadDescriptor() {
       if (!mediaProvider) throw createError(503, 'Media provider is not configured')
       return mediaProvider.createUploadDescriptor()
