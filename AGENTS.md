@@ -40,12 +40,12 @@ The React, TypeScript, and Vite frontend lives in a separate repository. Do not 
 - `server.js`: load environment configuration, connect to MongoDB, start HTTP, and handle graceful shutdown.
 - `src/app.js`: configure Express and register middleware and routes.
 - `src/config`: environment and database configuration.
+- `src/coursework`: frozen Assignment 2 compatibility models, controllers, routers, and supporting utilities.
 - `src/modules`: production feature modules. Keep feature-specific models, services, controllers, routes, validation, and serializers together.
 - `src/modules/auth`: administrator identity, opaque sessions, cookie policy, authentication service and HTTP delivery, login validation, safe admin serialization, and session middleware.
 - `src/modules/projects`: the production Projects module. Its shared `PortfolioProject` model is at the module root and protected write behavior is under `admin`.
 - `src/modules/media`: the production Media module. Shared asset persistence and lifecycle services live at the module root, provider adapters live under `providers`, and protected HTTP delivery lives under `admin`.
-- `src/controllers`, `src/models`, and `src/utils`: frozen coursework compatibility code awaiting its own module boundary.
-- `src/routes`: coursework routers plus the production v1 composition router until the final structural refactor. Do not add new feature-specific production routers here.
+- `src/routes`: the production v1 composition router until the final structural refactor. Do not add feature-specific routers here.
 - `src/middleware`: shared Express middleware and error handling.
 - `test`: automated tests.
 - `docs/assignment`: immutable coursework reference files.
@@ -55,7 +55,7 @@ Do not create empty placeholder modules. Add a directory or file when it gains a
 
 Production modules use direct imports rather than barrel files. A module may separate `admin` and `public` delivery code while keeping domain models shared at the module root. Structural moves must preserve API behavior and pass the complete test suite before the next feature is migrated.
 
-The four coursework controllers are configured through `src/utils/crud-controller.js`, and the four routers use `src/routes/create-resource-router.js`. Keep the resource-specific controller and router modules even when behavior is shared. API-boundary normalization belongs in `src/utils/input-normalizers.js`; public Mongoose serialization belongs in `src/utils/schema-options.js`.
+The four coursework controllers are configured through `src/coursework/utils/crud-controller.js`, and the four routers use `src/coursework/routes/create-resource-router.js`. Keep the resource-specific controller and router modules even when behavior is shared. Coursework API-boundary normalization belongs in `src/coursework/utils/input-normalizers.js`; coursework Mongoose serialization belongs in `src/coursework/utils/schema-options.js`.
 
 ## Express
 
