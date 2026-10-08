@@ -7,6 +7,7 @@
   "main": "server.js",
   "scripts": {
     "admin:create": "node scripts/create-admin.js",
+    "projects:import": "node scripts/import-projects.js",
     "dev": "node --watch server.js",
     "start": "node server.js",
     "lint": "eslint .",

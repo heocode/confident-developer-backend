@@ -15,7 +15,10 @@ const integer = (minimum = 0, maximum = 999) => z.number().int().min(minimum).ma
 const calendarDateSchema = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/, 'Must be a valid ISO date')
-  .refine((value) => new Date(`${value}T00:00:00.000Z`).toISOString().startsWith(value), 'Must be a valid ISO date')
+  .refine((value) => {
+    const date = new Date(`${value}T00:00:00.000Z`)
+    return !Number.isNaN(date.getTime()) && date.toISOString().startsWith(value)
+  }, 'Must be a valid ISO date')
 const timestampSchema = z.string().datetime({ offset: true })
 const dateSchema = z
   .union([calendarDateSchema, timestampSchema])

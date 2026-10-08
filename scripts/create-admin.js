@@ -8,58 +8,7 @@ import mongoose from 'mongoose'
 
 import { connectToDatabase } from '../src/config/database.js'
 import { AdminUser } from '../src/modules/auth/admin-user.js'
-
-function promptHidden(question) {
-  if (!input.isTTY || !output.isTTY || typeof input.setRawMode !== 'function') {
-    throw new Error('Admin creation requires an interactive terminal')
-  }
-
-  return new Promise((resolve, reject) => {
-    let value = ''
-    let settled = false
-    const previousRawMode = input.isRaw
-
-    const cleanup = () => {
-      input.removeListener('data', onData)
-      input.setRawMode(previousRawMode)
-      input.pause()
-      output.write('\n')
-    }
-
-    const finish = (callback) => {
-      if (settled) return
-      settled = true
-      cleanup()
-      callback()
-    }
-
-    const onData = (chunk) => {
-      for (const character of chunk) {
-        if (character === '\u0003') {
-          finish(() => reject(new Error('Admin creation cancelled')))
-          return
-        }
-
-        if (character === '\r' || character === '\n') {
-          finish(() => resolve(value))
-          return
-        }
-
-        if (character === '\u007f' || character === '\b') {
-          value = value.slice(0, -1)
-        } else if (character >= ' ') {
-          value += character
-        }
-      }
-    }
-
-    output.write(question)
-    input.setEncoding('utf8')
-    input.setRawMode(true)
-    input.resume()
-    input.on('data', onData)
-  })
-}
+import { promptHidden } from './utils/prompt-hidden.js'
 
 function validatePassword(password) {
   if (password.length < 12 || Buffer.byteLength(password, 'utf8') > 72) {

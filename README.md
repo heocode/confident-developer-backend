@@ -40,6 +40,8 @@ npm start      Start the server normally
 npm run lint   Run ESLint
 npm test       Run the Node.js test suite
 npm run admin:create  Interactively provision the single production administrator
+npm run projects:import -- --dry-run  Validate the local project import without network access
+npm run projects:import  Interactively import the approved projects through the Admin API
 ```
 
 ## Assignment references
@@ -88,6 +90,14 @@ Authenticated media management endpoints are:
 - `DELETE /api/v1/admin/media/:id`
 
 Uploads go directly from the browser to Cloudinary using a backend-generated signature. The backend then verifies authoritative Cloudinary metadata before registration. Media operations return `503` until `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, and `CLOUDINARY_API_SECRET` are configured together.
+
+## Initial project content import
+
+The versioned manifest in `scripts/project-import-manifest.js` maps the approved Unicon, SuperSauced, and DomSot content to local PNG files under the ignored `makets/project-assets` directory. Run the offline dry-run first to validate every payload, path, PNG header, dimension, size, and content hash without contacting the API.
+
+The apply command requires an interactive terminal, a running configured API, and the existing administrator credentials. It signs in through the Auth API, uploads media through the Media API, and creates or updates drafts through the Projects API; it never writes directly to MongoDB or Cloudinary. Login rotates the administrator's existing session. Separate confirmations guard remote changes and final publication, and credentials are neither accepted as command arguments nor written to disk.
+
+Interrupted runs resume from `output/project-import-state.json`, which is ignored by Git and written with owner-only permissions. The state retains content hashes and registered media IDs, preserves stable nested project IDs on updates, and records superseded assets for later review without deleting them automatically. Use `--base-url` and `--origin` to target a deployed API; non-local targets must use HTTPS.
 
 ## Coursework API
 

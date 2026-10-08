@@ -262,6 +262,8 @@ Application code accesses storage through a small provider-neutral media service
 
 Public serializers ask that service for named `logo`, `homePreview`, or `screenshot` delivery presets. The Cloudinary adapter turns those presets into bounded automatic-format and automatic-quality transformations. Public responses contain the resulting HTTPS URL, dimensions, and contextual alt text but no provider asset ID or provider lifecycle metadata.
 
+Initial approved project content is bootstrapped by the interactive `projects:import` script from a versioned manifest and ignored local PNG sources. Its dry-run validates content and media offline. Apply mode authenticates as the owner and uses the same Auth, Media, and Projects HTTP contracts as the future admin UI, including signed direct provider uploads and server-side publication validation; it does not write directly to MongoDB or Cloudinary. An ignored owner-only resume file tracks content hashes and registered IDs, while superseded media remains subject to the normal explicit media lifecycle.
+
 To preserve the free tier:
 
 - prefer WebP/AVIF delivery and automatic quality selection;

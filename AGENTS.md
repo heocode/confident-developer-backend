@@ -156,6 +156,9 @@ Current project persistence decisions:
 - The public Projects list sorts by `projectsPageOrder` then `_id`. Home placement requires `home.featured: true` and sorts by `home.order` then `_id`. The common list representation includes links and Home card data; detail adds `scope` and ordered screenshots.
 - Public project routes accept no MongoDB ID. Query and slug input are strict, and unknown query parameters are rejected.
 - Successful public project responses send browser-revalidating `Cache-Control` plus `CDN-Cache-Control` for a 60-second shared-cache lifetime and five-minute stale-while-revalidate window. Error responses are not cacheable. The frontend deployment must verify external-rewrite caching and explicitly opt in if it predates Vercel's default external-origin caching behavior.
+- Initial Unicon, SuperSauced, and DomSot content is defined in `scripts/project-import-manifest.js`; its PNG source files live under the ignored `makets/project-assets` directory. `npm run projects:import -- --dry-run` validates the complete local plan without credentials, network requests, or external writes.
+- The interactive `npm run projects:import` command uses only the existing Auth, Media, and Projects HTTP APIs. It never bypasses domain validation with direct MongoDB or provider writes, never accepts credentials through arguments or environment variables, warns that login rotates the existing administrator session, and requires separate confirmations for content changes and publication.
+- Import progress is stored in the ignored owner-only `output/project-import-state.json`. Content hashes and media IDs permit safe resume, existing nested project IDs remain stable when their semantic item matches, and superseded media is recorded for manual lifecycle review rather than deleted automatically.
 
 Current media decisions:
 
