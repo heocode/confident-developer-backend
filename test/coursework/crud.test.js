@@ -3,11 +3,11 @@ import { after, before, describe, it } from 'node:test'
 
 import mongoose from 'mongoose'
 
-import { createApp } from '../src/app.js'
-import { Project } from '../src/coursework/models/project.js'
-import { Reference } from '../src/coursework/models/reference.js'
-import { Service } from '../src/coursework/models/service.js'
-import { User } from '../src/coursework/models/user.js'
+import { createApp } from '../../src/app.js'
+import { Project } from '../../src/coursework/models/project.js'
+import { Reference } from '../../src/coursework/models/reference.js'
+import { Service } from '../../src/coursework/models/service.js'
+import { User } from '../../src/coursework/models/user.js'
 
 const models = [Reference, Project, Service, User]
 

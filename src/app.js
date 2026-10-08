@@ -6,6 +6,7 @@ import createError from 'http-errors'
 import mongoose from 'mongoose'
 import morgan from 'morgan'
 
+import { createV1Router } from './api/v1-router.js'
 import { loadEnvironment } from './config/environment.js'
 import { projectRouter } from './coursework/routes/project-routes.js'
 import { referenceRouter } from './coursework/routes/reference-routes.js'
@@ -17,7 +18,6 @@ import { createAuthService } from './modules/auth/auth-service.js'
 import { createMediaService } from './modules/media/media-service.js'
 import { createCloudinaryMediaProvider } from './modules/media/providers/cloudinary-media-provider.js'
 import { createAdminProjectService } from './modules/projects/admin/admin-project-service.js'
-import { createV1Router } from './routes/v1-routes.js'
 
 export function createApp({
   environment = loadEnvironment(),

@@ -3,10 +3,10 @@ import { after, before, describe, it } from 'node:test'
 
 import mongoose from 'mongoose'
 
-import { createApp } from '../src/app.js'
-import { loadEnvironment } from '../src/config/environment.js'
-import { createMediaService } from '../src/modules/media/media-service.js'
-import { createCloudinaryMediaProvider } from '../src/modules/media/providers/cloudinary-media-provider.js'
+import { createApp } from '../../../src/app.js'
+import { loadEnvironment } from '../../../src/config/environment.js'
+import { createMediaService } from '../../../src/modules/media/media-service.js'
+import { createCloudinaryMediaProvider } from '../../../src/modules/media/providers/cloudinary-media-provider.js'
 
 const frontendOrigin = 'http://localhost:5173'
 const sessionCookie = 'cd_admin_session=media-session-token'

@@ -39,21 +39,21 @@ The React, TypeScript, and Vite frontend lives in a separate repository. Do not 
 
 - `server.js`: load environment configuration, connect to MongoDB, start HTTP, and handle graceful shutdown.
 - `src/app.js`: configure Express and register middleware and routes.
+- `src/api`: compose versioned production feature routers without owning feature behavior.
 - `src/config`: environment and database configuration.
 - `src/coursework`: frozen Assignment 2 compatibility models, controllers, routers, and supporting utilities.
 - `src/modules`: production feature modules. Keep feature-specific models, services, controllers, routes, validation, and serializers together.
 - `src/modules/auth`: administrator identity, opaque sessions, cookie policy, authentication service and HTTP delivery, login validation, safe admin serialization, and session middleware.
 - `src/modules/projects`: the production Projects module. Its shared `PortfolioProject` model is at the module root and protected write behavior is under `admin`.
 - `src/modules/media`: the production Media module. Shared asset persistence and lifecycle services live at the module root, provider adapters live under `providers`, and protected HTTP delivery lives under `admin`.
-- `src/routes`: the production v1 composition router until the final structural refactor. Do not add feature-specific routers here.
 - `src/middleware`: shared Express middleware and error handling.
-- `test`: automated tests.
+- `test`: automated tests organized by configuration, coursework compatibility, and production feature module.
 - `docs/assignment`: immutable coursework reference files.
 - `postman`: supplied and project-owned API collections.
 
 Do not create empty placeholder modules. Add a directory or file when it gains a concrete responsibility.
 
-Production modules use direct imports rather than barrel files. A module may separate `admin` and `public` delivery code while keeping domain models shared at the module root. Structural moves must preserve API behavior and pass the complete test suite before the next feature is migrated.
+Production modules use direct imports rather than barrel files. A module may separate `admin` and `public` delivery code while keeping domain models shared at the module root. `src/api/v1-router.js` is the production composition root for those feature routers; it must not absorb feature-specific controllers or business logic. Tests mirror the same feature boundaries where practical.
 
 The four coursework controllers are configured through `src/coursework/utils/crud-controller.js`, and the four routers use `src/coursework/routes/create-resource-router.js`. Keep the resource-specific controller and router modules even when behavior is shared. Coursework API-boundary normalization belongs in `src/coursework/utils/input-normalizers.js`; coursework Mongoose serialization belongs in `src/coursework/utils/schema-options.js`.
 

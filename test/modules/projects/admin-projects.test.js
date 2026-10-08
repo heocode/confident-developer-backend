@@ -3,11 +3,11 @@ import { after, before, describe, it } from 'node:test'
 
 import mongoose from 'mongoose'
 
-import { createApp } from '../src/app.js'
-import { loadEnvironment } from '../src/config/environment.js'
-import { createAdminProjectService } from '../src/modules/projects/admin/admin-project-service.js'
-import { serializeAdminProject } from '../src/modules/projects/admin/admin-project-serializer.js'
-import { PortfolioProject } from '../src/modules/projects/portfolio-project.js'
+import { createApp } from '../../../src/app.js'
+import { loadEnvironment } from '../../../src/config/environment.js'
+import { createAdminProjectService } from '../../../src/modules/projects/admin/admin-project-service.js'
+import { serializeAdminProject } from '../../../src/modules/projects/admin/admin-project-serializer.js'
+import { PortfolioProject } from '../../../src/modules/projects/portfolio-project.js'
 
 const frontendOrigin = 'http://localhost:5173'
 const sessionCookie = 'cd_admin_session=project-session-token'

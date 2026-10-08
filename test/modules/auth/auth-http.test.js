@@ -3,11 +3,11 @@ import { after, before, describe, it } from 'node:test'
 
 import createError from 'http-errors'
 
-import { createApp } from '../src/app.js'
-import { loadEnvironment } from '../src/config/environment.js'
-import { AdminSession } from '../src/modules/auth/admin-session.js'
-import { getAdminSessionCookie } from '../src/modules/auth/admin-session-cookie.js'
-import { AdminUser } from '../src/modules/auth/admin-user.js'
+import { createApp } from '../../../src/app.js'
+import { loadEnvironment } from '../../../src/config/environment.js'
+import { AdminSession } from '../../../src/modules/auth/admin-session.js'
+import { getAdminSessionCookie } from '../../../src/modules/auth/admin-session-cookie.js'
+import { AdminUser } from '../../../src/modules/auth/admin-user.js'
 
 const frontendOrigin = 'http://localhost:5173'
 const admin = {

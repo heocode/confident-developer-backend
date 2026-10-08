@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
-import { getPort, loadEnvironment } from '../src/config/environment.js'
+import { getPort, loadEnvironment } from '../../src/config/environment.js'
 
 describe('environment configuration', () => {
   it('provides safe development defaults', () => {

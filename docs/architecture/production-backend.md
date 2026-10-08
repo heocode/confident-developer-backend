@@ -34,7 +34,7 @@ The Media module is located at `src/modules/media`. Shared asset persistence and
 
 The Authentication module is located at `src/modules/auth`. It owns administrator and session persistence, authentication business logic, cookie policy, login validation, safe admin serialization, authentication routes, and the middleware used to protect the admin API. Cross-cutting rate limiting, trusted-origin checks, request validation, no-store policy, and global error handling remain shared middleware.
 
-The frozen Assignment 2 compatibility layer is isolated under `src/coursework`, retaining its internal models/controllers/routes organization and shared CRUD factories. It is mounted only when `ENABLE_COURSEWORK_API=true`. The production v1 composition router remains under `src/routes` temporarily; the final structural stage will move application composition to its own boundary and organize tests by feature. Each structural stage is behavior-preserving and keeps the full test suite passing.
+The frozen Assignment 2 compatibility layer is isolated under `src/coursework`, retaining its internal models/controllers/routes organization and shared CRUD factories. It is mounted only when `ENABLE_COURSEWORK_API=true`. The production composition root lives at `src/api/v1-router.js` and connects feature-owned routers without owning their behavior. Automated tests mirror configuration, coursework, and production module boundaries under `test`.
 
 ## Deployment Topology
 
