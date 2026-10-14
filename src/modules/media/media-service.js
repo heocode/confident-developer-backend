@@ -1,5 +1,6 @@
 import createError from 'http-errors'
 
+import { SiteProfile } from '../profile/site-profile.js'
 import { PortfolioProject } from '../projects/portfolio-project.js'
 import { MediaAsset } from './media-asset.js'
 
@@ -16,6 +17,7 @@ function projectUsageFilter(mediaAssetId) {
 export function createMediaService({
   mediaModel = MediaAsset,
   projectModel = PortfolioProject,
+  profileModel = SiteProfile,
   mediaProvider,
 } = {}) {
   function requireProvider(providerName) {
@@ -24,6 +26,39 @@ export function createMediaService({
     }
 
     return mediaProvider
+  }
+
+  async function registerAsset({ provider, providerAssetId, alt }, getMetadata) {
+    requireProvider(provider)
+
+    const existingAsset = await mediaModel.findOne({ provider, providerAssetId })
+    if (existingAsset) return { asset: existingAsset, created: false }
+
+    const metadata = await getMetadata(providerAssetId)
+
+    try {
+      const asset = await mediaModel.create({ ...metadata, alt })
+      return { asset, created: true }
+    } catch (error) {
+      if (error?.code !== 11_000) throw error
+
+      const concurrentlyCreatedAsset = await mediaModel.findOne({ provider, providerAssetId })
+      if (!concurrentlyCreatedAsset) throw error
+      return { asset: concurrentlyCreatedAsset, created: false }
+    }
+  }
+
+  async function getUsage(mediaAssetId) {
+    const [projectCount, profileResumeCount] = await Promise.all([
+      projectModel.countDocuments(projectUsageFilter(mediaAssetId)),
+      profileModel.countDocuments({ resumeAsset: mediaAssetId }),
+    ])
+
+    return {
+      inUse: projectCount + profileResumeCount > 0,
+      projectCount,
+      profileResumeCount,
+    }
   }
 
   return {
@@ -37,24 +72,19 @@ export function createMediaService({
       return mediaProvider.createUploadDescriptor()
     },
 
-    async registerAsset({ provider, providerAssetId, alt }) {
-      requireProvider(provider)
+    createDocumentUploadDescriptor() {
+      if (!mediaProvider) throw createError(503, 'Media provider is not configured')
+      return mediaProvider.createDocumentUploadDescriptor()
+    },
 
-      const existingAsset = await mediaModel.findOne({ provider, providerAssetId })
-      if (existingAsset) return { asset: existingAsset, created: false }
+    registerAsset(input) {
+      return registerAsset(input, (providerAssetId) => mediaProvider.getAssetMetadata(providerAssetId))
+    },
 
-      const metadata = await mediaProvider.getAssetMetadata(providerAssetId)
-
-      try {
-        const asset = await mediaModel.create({ ...metadata, alt })
-        return { asset, created: true }
-      } catch (error) {
-        if (error?.code !== 11_000) throw error
-
-        const concurrentlyCreatedAsset = await mediaModel.findOne({ provider, providerAssetId })
-        if (!concurrentlyCreatedAsset) throw error
-        return { asset: concurrentlyCreatedAsset, created: false }
-      }
+    registerDocumentAsset(input) {
+      return registerAsset(input, (providerAssetId) =>
+        mediaProvider.getDocumentAssetMetadata(providerAssetId),
+      )
     },
 
     async listAssets({ page, limit, status }) {
@@ -83,14 +113,9 @@ export function createMediaService({
       const asset = await mediaModel.findById(mediaAssetId)
       if (!asset) throw createError(404, 'Media asset not found')
 
-      const projectCount = await projectModel.countDocuments(projectUsageFilter(asset._id))
-
       return {
         asset,
-        usage: {
-          inUse: projectCount > 0,
-          projectCount,
-        },
+        usage: await getUsage(asset._id),
       }
     },
 
@@ -107,9 +132,9 @@ export function createMediaService({
       const asset = await mediaModel.findById(mediaAssetId)
       if (!asset) throw createError(404, 'Media asset not found')
 
-      const projectCount = await projectModel.countDocuments(projectUsageFilter(asset._id))
-      if (projectCount > 0) {
-        throw createError(409, 'Media asset is currently used by one or more projects')
+      const usage = await getUsage(asset._id)
+      if (usage.inUse) {
+        throw createError(409, 'Media asset is currently in use')
       }
 
       requireProvider(asset.provider)

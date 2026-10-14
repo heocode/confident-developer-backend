@@ -98,6 +98,7 @@ export function createAdminProjectService({
     const query = mediaAssetModel.countDocuments({
       _id: { $in: assetIds },
       status: 'active',
+      $or: [{ kind: 'image' }, { kind: { $exists: false } }],
     })
     const activeAssetCount = await useSession(query, session)
 

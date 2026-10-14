@@ -29,8 +29,30 @@ describe('MediaAsset model', () => {
 
     assert.equal(MediaAsset.collection.collectionName, 'media_assets')
     assert.equal(asset.provider, 'cloudinary')
+    assert.equal(asset.kind, 'image')
     assert.equal(asset.resourceType, 'image')
     assert.equal(asset.status, 'active')
+  })
+
+  it('stores PDF documents under the stricter document constraints', async () => {
+    const document = new MediaAsset({
+      kind: 'document',
+      providerAssetId: 'resume-document',
+      secureUrl: 'https://res.cloudinary.com/example/image/upload/resume.pdf',
+      format: 'pdf',
+      width: 612,
+      height: 792,
+      bytes: 100_000,
+      alt: 'Vadim Iskakov resume',
+    })
+
+    await document.validate()
+
+    document.format = 'webp'
+    await assert.rejects(document.validate(), (error) => Boolean(error.errors.format))
+    document.format = 'pdf'
+    document.bytes = 6 * 1024 * 1024
+    await assert.rejects(document.validate(), (error) => Boolean(error.errors.bytes))
   })
 
   it('requires integer image dimensions and byte counts', async () => {

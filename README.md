@@ -88,6 +88,12 @@ Public Profile Post endpoints are:
 
 The public post contains the current text, revision, content date, and real like/view counters. Like and view bodies contain the rendered `revision`. Anonymous interactions use a host-only `HttpOnly` visitor cookie; likes are idempotent and views are counted at most once per visitor in 24 hours. Mutation and personalized interaction responses are never cached.
 
+The public resume download endpoint is:
+
+- `GET /api/v1/profile/resume`
+
+It returns a short-cacheable redirect to the current managed PDF attachment on the media CDN. The frontend should link to this stable relative endpoint rather than storing or constructing a Cloudinary URL.
+
 Admin authentication endpoints are:
 
 - `POST /api/v1/auth/login`
@@ -127,6 +133,14 @@ Authenticated Profile Post endpoints are:
 
 The `PUT` body is `{ "text": "..." }`. Replacing the text creates a new revision, updates its displayed date, and transactionally resets likes and views. Sending the existing text is a no-op.
 
+Authenticated resume management endpoints are:
+
+- `POST /api/v1/admin/profile/resume/upload-signature`
+- `GET /api/v1/admin/profile/resume`
+- `PUT /api/v1/admin/profile/resume`
+
+The upload descriptor permits only a managed PDF up to 5 MB. After direct browser upload, `PUT` registers authoritative provider metadata and assigns the document as the singleton profile resume. Replaced documents remain in the media library until explicitly deleted.
+
 Authenticated media management endpoints are:
 
 - `POST /api/v1/admin/media/upload-signature`
@@ -136,7 +150,7 @@ Authenticated media management endpoints are:
 - `PATCH /api/v1/admin/media/:id`
 - `DELETE /api/v1/admin/media/:id`
 
-Uploads go directly from the browser to Cloudinary using a backend-generated signature. The backend then verifies authoritative Cloudinary metadata before registration. Media operations return `503` until `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, and `CLOUDINARY_API_SECRET` are configured together.
+Uploads go directly from the browser to Cloudinary using a backend-generated signature. The backend then verifies authoritative Cloudinary metadata before registration. Media assets distinguish images from documents; project media remains image-only, while the profile resume accepts only PDF. Media operations return `503` until `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, and `CLOUDINARY_API_SECRET` are configured together.
 
 ## Initial project content import
 

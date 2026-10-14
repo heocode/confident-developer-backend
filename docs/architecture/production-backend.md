@@ -36,6 +36,8 @@ The GitHub module is located at `src/modules/github`. It owns the singleton snap
 
 The Profile Post module is located at `src/modules/profile-post`. It owns the singleton Home post, anonymous visitor identity, revision-scoped likes and views, and separate public and admin delivery.
 
+The Profile module is located at `src/modules/profile`. It owns the singleton Site Profile and currently implements managed resume assignment plus stable public download delivery. Future Profile/About fields extend this singleton incrementally.
+
 The Media module is located at `src/modules/media`. Shared asset persistence and lifecycle behavior live at the module root, Cloudinary is isolated under `providers`, and authenticated media HTTP delivery lives under `admin`.
 
 The Authentication module is located at `src/modules/auth`. It owns administrator and session persistence, authentication business logic, cookie policy, login validation, safe admin serialization, authentication routes, and the middleware used to protect the admin API. Cross-cutting rate limiting, trusted-origin checks, request validation, no-store policy, and global error handling remain shared middleware.
@@ -119,10 +121,17 @@ GET /api/v1/profile-post/interaction?revision=<number>
 
 The first route returns the current Home post and its aggregate counters with a 15-second shared-cache lifetime. The personalized interaction route reports whether the current visitor liked the rendered revision and is always `private, no-store`.
 
+The implemented public resume route is:
+
+```text
+GET /api/v1/profile/resume
+```
+
+It returns a short-cacheable `302` to a backend-generated Cloudinary attachment URL for the active managed PDF. The relative API URL remains stable across replacements, and the frontend never stores or constructs provider URLs.
+
 Remaining planned routes:
 
 ```text
-GET /api/v1/profile
 GET /api/v1/services/:slug
 GET /api/v1/references
 GET /api/v1/posts
@@ -131,7 +140,7 @@ GET /api/v1/posts/:slug
 
 Only published projects, services, posts, and approved references are returned. List responses expose only the fields needed by their cards; detail routes may expose richer public fields.
 
-Successful public project, service, and GitHub summary responses send `Cache-Control: public, max-age=0, s-maxage=60, stale-while-revalidate=300` and `CDN-Cache-Control: max-age=60, stale-while-revalidate=300`. The Profile Post uses a shorter 15-second shared lifetime and 30-second stale window so counter and content changes converge sooner. Express sets these headers only after successful service and serialization work, so validation, not-found, availability, and server errors are not cached. The dedicated CDN header makes caching explicit for Vercel external rewrites; an existing Vercel project must still verify or enable external-origin caching in its CDN configuration. Content changes are eventually visible within the bounded cache window rather than instantly purged; targeted Vercel cache invalidation can be added later if immediate emergency removal becomes a product requirement.
+Successful public project, service, GitHub summary, and resume redirect responses send `Cache-Control: public, max-age=0, s-maxage=60, stale-while-revalidate=300` and `CDN-Cache-Control: max-age=60, stale-while-revalidate=300`. The Profile Post uses a shorter 15-second shared lifetime and 30-second stale window so counter and content changes converge sooner. Express sets these headers only after successful service and serialization work, so validation, not-found, availability, and server errors are not cached. The dedicated CDN header makes caching explicit for Vercel external rewrites; an existing Vercel project must still verify or enable external-origin caching in its CDN configuration. Content changes are eventually visible within the bounded cache window rather than instantly purged; targeted Vercel cache invalidation can be added later if immediate emergency removal becomes a product requirement.
 
 ### Public write routes
 
@@ -222,6 +231,16 @@ PUT /api/v1/admin/profile-post
 
 The strict replacement body contains only plain text of 1–500 characters. Changing it increments the revision, updates the content date, and transactionally clears interaction records and aggregate counters. Replacing it with identical normalized text is a no-op.
 
+Implemented resume administration routes are:
+
+```text
+POST /api/v1/admin/profile/resume/upload-signature
+GET  /api/v1/admin/profile/resume
+PUT  /api/v1/admin/profile/resume
+```
+
+The upload descriptor permits one managed PDF up to 5 MB. The strict replacement body contains only provider and immutable provider asset ID; the backend obtains all delivery and file metadata from Cloudinary before assigning the document.
+
 Implemented media routes are:
 
 ```text
@@ -238,7 +257,6 @@ The media collection uses page-based pagination with a default page size of 24 a
 Remaining planned route families are:
 
 ```text
-/api/v1/admin/profile
 /api/v1/admin/references
 /api/v1/admin/inquiries
 /api/v1/admin/posts
@@ -256,7 +274,9 @@ Schemas will be extended incrementally as their endpoints are implemented. Field
 
 ### SiteProfile
 
-A singleton document stores public identity, hero copy, biography, location, availability, social links, education, current work, contact CTA, and references to managed portrait/resume assets. Public and admin serializers are separate.
+`SiteProfile` uses the immutable singleton key `portfolio` in `site_profiles`. Its currently implemented field is the required reference to the active resume `MediaAsset`. Future approved identity, biography, location, availability, social, education, work, CTA, and portrait fields extend the same singleton rather than creating competing profile records.
+
+Resume replacement updates only the singleton reference. The previous document remains in the media library for explicit lifecycle review instead of being deleted automatically. The stable public endpoint redirects to a provider-generated attachment URL named `Vadim-Iskakov-Resume.pdf`.
 
 ### Project
 
@@ -317,21 +337,21 @@ The REST adapter lists public owner repositories, excludes forks, validates ever
 
 ### MediaAsset
 
-Media metadata is stored in the explicit `media_assets` collection, separately from domain documents. The initial image-only model stores provider, unique provider asset ID, HTTPS delivery URL, resource type, format, integer dimensions, byte size, default alt text, lifecycle state, and timestamps. For Cloudinary, the provider asset ID is the immutable `asset_id`, not the renameable public ID. Images are limited to 10 MB and 10,000 pixels per dimension. Binary files are not stored in MongoDB.
+Media metadata is stored in the explicit `media_assets` collection, separately from domain documents. `kind` distinguishes images from documents while legacy records without the persisted field remain image-compatible. The model stores provider, unique provider asset ID, HTTPS delivery URL, provider resource type, format, integer dimensions, byte size, accessible label, lifecycle state, and timestamps. For Cloudinary, the provider asset ID is the immutable `asset_id`, not the renameable public ID. Images are limited to 10 MB and 10,000 pixels per dimension; the current document flow accepts only PDF up to 5 MB. Binary files are not stored in MongoDB.
 
-Admin serializers return the delivery URL and presentation metadata while omitting the provider asset ID. Media lists use descending creation time and `_id` plus page-based pagination. Detail responses include whether and how many projects currently reference the asset.
+Admin serializers return kind, delivery URL, and presentation metadata while omitting the provider asset ID. Media lists use descending creation time and `_id` plus page-based pagination. Detail responses include project usage and whether the Site Profile currently references the asset as its resume. Project publication accepts only active image-kind assets.
 
 ## Media Strategy
 
-Cloudinary Free is the initial media provider. The admin frontend requests a signed upload descriptor from the backend and uploads directly to Cloudinary. Each descriptor fixes a unique managed public ID, prevents overwrite, applies an image-format allowlist and application tag, and uses SHA-256 signing. The API secret never reaches the browser.
+Cloudinary Free is the initial media provider. The admin frontend requests a signed upload descriptor from the backend and uploads directly to Cloudinary. Each descriptor fixes a unique managed public ID, prevents overwrite, applies a flow-specific format allowlist and application tag, and uses SHA-256 signing. Images use `portfolio/images/`; resume PDFs use `portfolio/documents/resume/`. The API secret never reaches the browser. Cloudinary Free requires PDF delivery to be enabled once in product-environment Security settings.
 
-After upload, the frontend sends only the provider name, returned immutable asset ID, and alt text to the registration endpoint. The backend fetches authoritative metadata from Cloudinary's Admin API instead of trusting a browser-provided URL, format, dimensions, or byte count. Repeated registration of the same provider asset is idempotent.
+After upload, the frontend sends only the provider name, returned immutable asset ID, and, for normal media registration, alt text. The backend fetches authoritative metadata from Cloudinary's Admin API instead of trusting a browser-provided URL, format, dimensions, or byte count. Resume registration owns its fixed accessible label and filename. Repeated registration of the same provider asset is idempotent.
 
-Deletion first checks project logo, Home preview, and screenshot references. A referenced asset returns `409`. An unused asset is persisted as `pendingDeletion` before the provider call; its MongoDB metadata is removed only after Cloudinary reports deletion or that the provider asset is already absent. A failed provider request leaves the pending record available for retry.
+Deletion first checks project logo, Home preview, screenshot, and active Site Profile resume references. A referenced asset returns `409`. An unused asset is persisted as `pendingDeletion` before the provider call; its MongoDB metadata is removed only after Cloudinary reports deletion or that the provider asset is already absent. A failed provider request leaves the pending record available for retry.
 
 Application code accesses storage through a small provider-neutral media service so Cloudinary can later be replaced by Cloudflare R2 or another provider without rewriting controllers or schemas.
 
-Public serializers ask that service for named `logo`, `homePreview`, or `screenshot` delivery presets. The Cloudinary adapter turns those presets into bounded automatic-format and automatic-quality transformations. Public responses contain the resulting HTTPS URL, dimensions, and contextual alt text but no provider asset ID or provider lifecycle metadata.
+Public serializers ask that service for named `logo`, `homePreview`, or `screenshot` delivery presets. The Cloudinary adapter turns those presets into bounded automatic-format and automatic-quality transformations. The resume uses a separate attachment preset and is exposed only through the stable backend redirect. Public responses contain no provider asset ID or provider lifecycle metadata.
 
 Initial approved project content is bootstrapped by the interactive `projects:import` script from a versioned manifest and ignored local PNG sources. Its dry-run validates content and media offline. Apply mode authenticates as the owner and uses the same Auth, Media, and Projects HTTP contracts as the future admin UI, including signed direct provider uploads and server-side publication validation; it does not write directly to MongoDB or Cloudinary. An ignored owner-only resume file tracks content hashes and registered IDs, while superseded media remains subject to the normal explicit media lifecycle.
 

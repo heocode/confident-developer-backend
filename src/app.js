@@ -19,6 +19,7 @@ import { createGitHubService } from './modules/github/github-service.js'
 import { createGitHubRestProvider } from './modules/github/providers/github-rest-provider.js'
 import { createMediaService } from './modules/media/media-service.js'
 import { createCloudinaryMediaProvider } from './modules/media/providers/cloudinary-media-provider.js'
+import { createProfileService } from './modules/profile/profile-service.js'
 import { createProfilePostService } from './modules/profile-post/profile-post-service.js'
 import { createAdminProjectService } from './modules/projects/admin/admin-project-service.js'
 import { createPublicProjectService } from './modules/projects/public/public-project-service.js'
@@ -37,6 +38,7 @@ export function createApp({
   githubService = createGitHubService({ githubProvider }),
   mediaProvider = createCloudinaryMediaProvider(environment.cloudinary),
   mediaService = createMediaService({ mediaProvider }),
+  profileService = createProfileService({ mediaService }),
   profilePostService = createProfilePostService(),
   projectService = createAdminProjectService(),
   publicProjectService = createPublicProjectService(),
@@ -93,6 +95,7 @@ export function createApp({
       authService,
       githubService,
       mediaService,
+      profileService,
       profilePostService,
       projectService,
       publicProjectService,

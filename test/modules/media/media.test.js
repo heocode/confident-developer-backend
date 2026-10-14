@@ -16,6 +16,7 @@ const providerAssetId = '6f87f9462fbb4f5a9d6b892b4d0b2f31'
 function mediaData(overrides = {}) {
   return {
     _id: new mongoose.Types.ObjectId(mediaAssetId),
+    kind: 'image',
     provider: 'cloudinary',
     providerAssetId,
     secureUrl: 'https://res.cloudinary.com/example/image/upload/portfolio/images/example.webp',
@@ -82,7 +83,7 @@ describe('admin media HTTP contract', () => {
     },
     async getAsset(id) {
       calls.get.push(id)
-      return { asset: mediaData(), usage: { inUse: true, projectCount: 2 } }
+      return { asset: mediaData(), usage: { inUse: true, projectCount: 2, profileResumeCount: 0 } }
     },
     async updateAsset(id, input) {
       calls.update.push({ id, input })
@@ -174,7 +175,7 @@ describe('admin media HTTP contract', () => {
       headers: { cookie: sessionCookie },
     })
     assert.equal(detail.response.status, 200)
-    assert.deepEqual(detail.body.data.usage, { inUse: true, projectCount: 2 })
+    assert.deepEqual(detail.body.data.usage, { inUse: true, projectCount: 2, profileResumeCount: 0 })
   })
 
   it('updates alt text and deletes through the protected API', async () => {
@@ -318,6 +319,7 @@ describe('Cloudinary media provider', () => {
     const metadata = await provider.getAssetMetadata(providerAssetId)
 
     assert.deepEqual(metadata, {
+      kind: 'image',
       provider: 'cloudinary',
       providerAssetId,
       secureUrl: 'https://res.cloudinary.com/example/image/upload/generated.webp',
@@ -328,6 +330,55 @@ describe('Cloudinary media provider', () => {
       bytes: 245_000,
     })
     assert.deepEqual(state.resourceIds, [{ assetId: providerAssetId, options: { tags: true } }])
+  })
+
+  it('creates and verifies a managed PDF upload without exposing secrets', async () => {
+    const { client, state } = createFakeCloudinaryClient({
+      public_id: 'portfolio/documents/resume/generated-id',
+      secure_url: 'https://res.cloudinary.com/example/image/upload/resume.pdf',
+      format: 'pdf',
+      width: 612,
+      height: 792,
+      bytes: 101_000,
+    })
+    const provider = createCloudinaryMediaProvider(configuration, {
+      client,
+      now: () => new Date('2026-10-14T12:00:00.000Z'),
+      createId: () => 'generated-id',
+    })
+
+    const descriptor = provider.createDocumentUploadDescriptor()
+    const metadata = await provider.getDocumentAssetMetadata(providerAssetId)
+
+    assert.equal(descriptor.upload.fields.public_id, 'portfolio/documents/resume/generated-id')
+    assert.equal(descriptor.upload.fields.allowed_formats, 'pdf')
+    assert.equal(descriptor.constraints.maxBytes, 5 * 1024 * 1024)
+    assert.equal(JSON.stringify(descriptor).includes('private-secret'), false)
+    assert.deepEqual(metadata, {
+      kind: 'document',
+      provider: 'cloudinary',
+      providerAssetId,
+      secureUrl: 'https://res.cloudinary.com/example/image/upload/resume.pdf',
+      resourceType: 'image',
+      format: 'pdf',
+      width: 612,
+      height: 792,
+      bytes: 101_000,
+    })
+    assert.deepEqual(state.signatures.at(-1).parameters.allowed_formats, ['pdf'])
+  })
+
+  it('creates an attachment URL for the public resume download', () => {
+    const { client } = createFakeCloudinaryClient()
+    const provider = createCloudinaryMediaProvider(configuration, { client })
+
+    assert.equal(
+      provider.createDeliveryUrl({
+        secureUrl: 'https://res.cloudinary.com/example/image/upload/v123/resume.pdf',
+        preset: 'resumeDownload',
+      }),
+      'https://res.cloudinary.com/example/image/upload/fl_attachment:Vadim-Iskakov-Resume/v123/resume.pdf',
+    )
   })
 
   it('rejects assets outside the managed upload flow', async () => {
@@ -378,7 +429,13 @@ function createQueryResult(value) {
   }
 }
 
-function createMediaServiceHarness({ asset = null, projectCount = 0, assets = [], totalItems = 0 } = {}) {
+function createMediaServiceHarness({
+  asset = null,
+  projectCount = 0,
+  profileResumeCount = 0,
+  assets = [],
+  totalItems = 0,
+} = {}) {
   const state = {
     created: [],
     deletedMetadata: [],
@@ -420,6 +477,11 @@ function createMediaServiceHarness({ asset = null, projectCount = 0, assets = []
       return projectCount
     },
   }
+  const profileModel = {
+    async countDocuments() {
+      return profileResumeCount
+    },
+  }
   const mediaProvider = {
     name: 'cloudinary',
     createDeliveryUrl({ secureUrl, preset }) {
@@ -428,10 +490,14 @@ function createMediaServiceHarness({ asset = null, projectCount = 0, assets = []
     createUploadDescriptor() {
       return { provider: 'cloudinary' }
     },
+    createDocumentUploadDescriptor() {
+      return { provider: 'cloudinary', constraints: { formats: ['pdf'] } }
+    },
     async getAssetMetadata(id) {
       state.providerLookups.push(id)
       return {
         provider: 'cloudinary',
+        kind: 'image',
         providerAssetId: id,
         secureUrl: 'https://example.com/image.webp',
         resourceType: 'image',
@@ -441,13 +507,27 @@ function createMediaServiceHarness({ asset = null, projectCount = 0, assets = []
         bytes: 1_000,
       }
     },
+    async getDocumentAssetMetadata(id) {
+      state.providerLookups.push(id)
+      return {
+        provider: 'cloudinary',
+        kind: 'document',
+        providerAssetId: id,
+        secureUrl: 'https://example.com/resume.pdf',
+        resourceType: 'image',
+        format: 'pdf',
+        width: 612,
+        height: 792,
+        bytes: 100_000,
+      }
+    },
     async deleteAsset(id) {
       state.providerDeletions.push(id)
     },
   }
 
   return {
-    service: createMediaService({ mediaModel, projectModel, mediaProvider }),
+    service: createMediaService({ mediaModel, projectModel, profileModel, mediaProvider }),
     mediaProvider,
     state,
   }
@@ -488,6 +568,20 @@ describe('media service', () => {
     assert.deepEqual(retry.state.providerLookups, [])
   })
 
+  it('registers document metadata through the dedicated provider flow', async () => {
+    const harness = createMediaServiceHarness()
+
+    const result = await harness.service.registerDocumentAsset({
+      provider: 'cloudinary',
+      providerAssetId,
+      alt: 'Vadim Iskakov resume',
+    })
+
+    assert.equal(result.created, true)
+    assert.equal(harness.state.created[0].kind, 'document')
+    assert.equal(harness.state.created[0].format, 'pdf')
+  })
+
   it('returns deterministic page metadata and zero total pages for an empty library', async () => {
     const asset = mediaData()
     const populated = createMediaServiceHarness({ assets: [asset], totalItems: 25 })
@@ -504,11 +598,21 @@ describe('media service', () => {
     const { service, state } = createMediaServiceHarness({ asset, projectCount: 2 })
 
     const result = await service.getAsset(mediaAssetId)
-    assert.deepEqual(result.usage, { inUse: true, projectCount: 2 })
+    assert.deepEqual(result.usage, { inUse: true, projectCount: 2, profileResumeCount: 0 })
 
     await assert.rejects(service.deleteAsset(mediaAssetId), (error) => error.status === 409)
     assert.deepEqual(state.providerDeletions, [])
     assert.equal(asset.status, 'active')
+  })
+
+  it('blocks deletion while an asset is the active profile resume', async () => {
+    const asset = mediaData({ kind: 'document', format: 'pdf' })
+    const { service, state } = createMediaServiceHarness({ asset, profileResumeCount: 1 })
+
+    const result = await service.getAsset(mediaAssetId)
+    assert.deepEqual(result.usage, { inUse: true, projectCount: 0, profileResumeCount: 1 })
+    await assert.rejects(service.deleteAsset(mediaAssetId), (error) => error.status === 409)
+    assert.deepEqual(state.providerDeletions, [])
   })
 
   it('marks an unused asset pending before provider deletion and removes its metadata last', async () => {

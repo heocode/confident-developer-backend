@@ -16,6 +16,7 @@ export function serializeAdminMediaAsset(asset) {
 
   return {
     id: serializeId(source._id ?? source.id),
+    kind: source.kind ?? 'image',
     provider: source.provider,
     url: source.secureUrl,
     resourceType: source.resourceType,

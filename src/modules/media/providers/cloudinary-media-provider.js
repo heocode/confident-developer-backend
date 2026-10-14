@@ -3,16 +3,19 @@ import { randomUUID } from 'node:crypto'
 import { v2 as cloudinary } from 'cloudinary'
 import createError from 'http-errors'
 
-import { MAX_IMAGE_BYTES, MAX_IMAGE_DIMENSION } from '../media-asset.js'
+import { MAX_DOCUMENT_BYTES, MAX_IMAGE_BYTES, MAX_IMAGE_DIMENSION } from '../media-asset.js'
 
 const ALLOWED_IMAGE_FORMATS = Object.freeze(['jpg', 'jpeg', 'png', 'webp', 'avif'])
+const ALLOWED_DOCUMENT_FORMATS = Object.freeze(['pdf'])
 const MANAGED_PUBLIC_ID_PREFIX = 'portfolio/images/'
+const MANAGED_DOCUMENT_PUBLIC_ID_PREFIX = 'portfolio/documents/resume/'
 const MANAGED_TAG = 'confident-developer-managed'
 const SIGNATURE_TTL_SECONDS = 60 * 60
 const DELIVERY_TRANSFORMATIONS = Object.freeze({
   logo: 'c_limit,w_512,h_512,f_auto,q_auto',
   homePreview: 'c_limit,w_1600,h_1200,f_auto,q_auto',
   screenshot: 'c_limit,w_2000,h_2000,f_auto,q_auto',
+  resumeDownload: 'fl_attachment:Vadim-Iskakov-Resume',
 })
 
 function unavailableError() {
@@ -65,6 +68,85 @@ export function createCloudinaryMediaProvider(
     if (!configuration) throw unavailableError()
   }
 
+  function createUploadDescriptor({ formats, publicIdPrefix, maxBytes }) {
+    requireConfiguration()
+
+    const issuedAt = now()
+    const timestamp = Math.floor(issuedAt.getTime() / 1_000)
+    const publicId = `${publicIdPrefix}${createId()}`
+    const parameters = {
+      allowed_formats: formats,
+      overwrite: false,
+      public_id: publicId,
+      tags: [MANAGED_TAG],
+      timestamp,
+    }
+    const signature = client.utils.api_sign_request(parameters, configuration.apiSecret)
+
+    return {
+      provider: 'cloudinary',
+      upload: {
+        method: 'POST',
+        url: `https://api.cloudinary.com/v1_1/${encodeURIComponent(configuration.cloudName)}/image/upload`,
+        fields: {
+          api_key: configuration.apiKey,
+          allowed_formats: formats.join(','),
+          overwrite: 'false',
+          public_id: publicId,
+          signature,
+          tags: MANAGED_TAG,
+          timestamp,
+        },
+      },
+      constraints: { formats: [...formats], maxBytes },
+      expiresAt: new Date(issuedAt.getTime() + SIGNATURE_TTL_SECONDS * 1_000),
+    }
+  }
+
+  async function getManagedAssetMetadata(providerAssetId, { formats, kind, publicIdPrefix }) {
+    requireConfiguration()
+
+    let resource
+
+    try {
+      resource = await client.api.resource_by_asset_id(providerAssetId, { tags: true })
+    } catch (error) {
+      if (isNotFoundError(error)) throw createError(404, 'Uploaded media asset was not found')
+      throw providerError()
+    }
+
+    const isManaged =
+      resource.asset_id === providerAssetId &&
+      resource.resource_type === 'image' &&
+      resource.type === 'upload' &&
+      resource.public_id?.startsWith(publicIdPrefix) &&
+      resource.tags?.includes(MANAGED_TAG)
+
+    if (!isManaged) {
+      throw createError(400, 'Uploaded media asset was not created by this application')
+    }
+
+    if (!formats.includes(resource.format)) {
+      throw createError(400, `Uploaded ${kind} format is not supported`)
+    }
+
+    if (kind === 'document' && resource.bytes > MAX_DOCUMENT_BYTES) {
+      throw createError(400, 'Uploaded document exceeds the maximum file size')
+    }
+
+    return {
+      kind,
+      provider: 'cloudinary',
+      providerAssetId: resource.asset_id,
+      secureUrl: resource.secure_url,
+      resourceType: resource.resource_type,
+      format: resource.format,
+      width: resource.width,
+      height: resource.height,
+      bytes: resource.bytes,
+    }
+  }
+
   return {
     name: 'cloudinary',
     isConfigured: Boolean(configuration),
@@ -74,82 +156,38 @@ export function createCloudinaryMediaProvider(
     },
 
     createUploadDescriptor() {
-      requireConfiguration()
+      const descriptor = createUploadDescriptor({
+        formats: ALLOWED_IMAGE_FORMATS,
+        publicIdPrefix: MANAGED_PUBLIC_ID_PREFIX,
+        maxBytes: MAX_IMAGE_BYTES,
+      })
+      descriptor.constraints.maxWidth = MAX_IMAGE_DIMENSION
+      descriptor.constraints.maxHeight = MAX_IMAGE_DIMENSION
+      return descriptor
+    },
 
-      const issuedAt = now()
-      const timestamp = Math.floor(issuedAt.getTime() / 1_000)
-      const publicId = `${MANAGED_PUBLIC_ID_PREFIX}${createId()}`
-      const parameters = {
-        allowed_formats: ALLOWED_IMAGE_FORMATS,
-        overwrite: false,
-        public_id: publicId,
-        tags: [MANAGED_TAG],
-        timestamp,
-      }
-      const signature = client.utils.api_sign_request(parameters, configuration.apiSecret)
-
-      return {
-        provider: 'cloudinary',
-        upload: {
-          method: 'POST',
-          url: `https://api.cloudinary.com/v1_1/${encodeURIComponent(configuration.cloudName)}/image/upload`,
-          fields: {
-            api_key: configuration.apiKey,
-            allowed_formats: ALLOWED_IMAGE_FORMATS.join(','),
-            overwrite: 'false',
-            public_id: publicId,
-            signature,
-            tags: MANAGED_TAG,
-            timestamp,
-          },
-        },
-        constraints: {
-          formats: [...ALLOWED_IMAGE_FORMATS],
-          maxBytes: MAX_IMAGE_BYTES,
-          maxWidth: MAX_IMAGE_DIMENSION,
-          maxHeight: MAX_IMAGE_DIMENSION,
-        },
-        expiresAt: new Date(issuedAt.getTime() + SIGNATURE_TTL_SECONDS * 1_000),
-      }
+    createDocumentUploadDescriptor() {
+      return createUploadDescriptor({
+        formats: ALLOWED_DOCUMENT_FORMATS,
+        publicIdPrefix: MANAGED_DOCUMENT_PUBLIC_ID_PREFIX,
+        maxBytes: MAX_DOCUMENT_BYTES,
+      })
     },
 
     async getAssetMetadata(providerAssetId) {
-      requireConfiguration()
+      return getManagedAssetMetadata(providerAssetId, {
+        formats: ALLOWED_IMAGE_FORMATS,
+        kind: 'image',
+        publicIdPrefix: MANAGED_PUBLIC_ID_PREFIX,
+      })
+    },
 
-      let resource
-
-      try {
-        resource = await client.api.resource_by_asset_id(providerAssetId, { tags: true })
-      } catch (error) {
-        if (isNotFoundError(error)) throw createError(404, 'Uploaded media asset was not found')
-        throw providerError()
-      }
-
-      const isManaged =
-        resource.asset_id === providerAssetId &&
-        resource.resource_type === 'image' &&
-        resource.type === 'upload' &&
-        resource.public_id?.startsWith(MANAGED_PUBLIC_ID_PREFIX) &&
-        resource.tags?.includes(MANAGED_TAG)
-
-      if (!isManaged) {
-        throw createError(400, 'Uploaded media asset was not created by this application')
-      }
-
-      if (!ALLOWED_IMAGE_FORMATS.includes(resource.format)) {
-        throw createError(400, 'Uploaded image format is not supported')
-      }
-
-      return {
-        provider: 'cloudinary',
-        providerAssetId: resource.asset_id,
-        secureUrl: resource.secure_url,
-        resourceType: resource.resource_type,
-        format: resource.format,
-        width: resource.width,
-        height: resource.height,
-        bytes: resource.bytes,
-      }
+    async getDocumentAssetMetadata(providerAssetId) {
+      return getManagedAssetMetadata(providerAssetId, {
+        formats: ALLOWED_DOCUMENT_FORMATS,
+        kind: 'document',
+        publicIdPrefix: MANAGED_DOCUMENT_PUBLIC_ID_PREFIX,
+      })
     },
 
     async deleteAsset(providerAssetId) {

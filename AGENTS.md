@@ -48,6 +48,7 @@ The React, TypeScript, and Vite frontend lives in a separate repository. Do not 
 - `src/modules/projects`: the production Projects module. Its shared `PortfolioProject` model is at the module root and protected write behavior is under `admin`.
 - `src/modules/services`: the production Services module. Its shared `PortfolioService` model is isolated from coursework services, with protected writes under `admin` and public reads under `public`.
 - `src/modules/media`: the production Media module. Shared asset persistence and lifecycle services live at the module root, provider adapters live under `providers`, and protected HTTP delivery lives under `admin`.
+- `src/modules/profile`: singleton portfolio profile data, currently the managed PDF resume, with separate protected management and stable public download delivery.
 - `src/modules/profile-post`: the singleton Home Profile Post, revision-scoped anonymous likes and views, visitor-cookie policy, and separate public/admin HTTP delivery.
 - `src/middleware`: shared Express middleware and error handling.
 - `test`: automated tests organized by configuration, coursework compatibility, and production feature module.
@@ -133,6 +134,7 @@ Current compatibility decisions:
 - Production projects use their own collection and require configurable Home selection, primary-project selection, separate Home/Projects-page ordering, individual theme colors, logos, Home previews, screenshots, a displayed position, date ranges, build breakdowns, and external links.
 - References will require three ratings, moderation state, pagination, deletion ownership, and abuse prevention. New submissions start pending. Submitter email is private and must never appear in public responses.
 - Production services use their own collection, publication lifecycle, separate Home/Services-page ordering, Home placement, and allowlisted frontend-owned icon and tone keys.
+- The singleton Site Profile owns the current resume reference. Resume binaries use the existing provider-neutral media layer rather than MongoDB, the repository, or the Render filesystem.
 - Contact inquiries, profile posts, GitHub data, media assets, likes, and views remain separate concerns rather than being forced into the four coursework resources.
 - The current Profile Post is a singleton Home-section post, not yet the future general mini-blog. Its likes and views record real, idempotent or time-deduplicated interactions rather than decorative seed values.
 - Fetch GitHub data through the backend and persist a cache snapshot; public frontend requests must not depend on a live GitHub request.
@@ -193,15 +195,25 @@ Current Profile Post decisions:
 - Protected management is available at `GET` and `PUT /api/v1/admin/profile-post`. A strict PUT accepts only `text`; identical normalized text is a no-op, while changed text increments revision, updates the date, zeros counters, and deletes old interaction records in one Atlas transaction.
 - The singleton Home post is intentionally separate from the future first-party mini-blog. Do not expand it into generic articles until those screens and contracts are approved.
 
+Current Site Profile and resume decisions:
+
+- `SiteProfile` uses the immutable singleton key `portfolio` in `site_profiles`; the currently implemented field is the required `resumeAsset` reference. Add other approved Profile/About fields incrementally rather than creating competing singleton models.
+- Protected resume management is available at `POST /api/v1/admin/profile/resume/upload-signature`, `GET /api/v1/admin/profile/resume`, and `PUT /api/v1/admin/profile/resume`. Registration accepts only provider and immutable provider asset ID, then verifies authoritative metadata.
+- Resume uploads use signed direct Cloudinary image-resource uploads under the managed `portfolio/documents/resume/` prefix, accept only PDF up to 5 MB, and never expose provider secrets. Cloudinary Free must have PDF delivery enabled in product-environment Security settings.
+- `GET /api/v1/profile/resume` is the stable public download URL. It returns a cacheable `302` to a backend-generated provider attachment URL named `Vadim-Iskakov-Resume.pdf`; frontend code must not store or construct the provider URL.
+- Replacing the resume only changes the singleton reference. The previous document remains an unused MediaAsset for explicit lifecycle review and deletion. Media deletion is blocked while an asset is the active resume.
+- The owner keeps the source PDF only in ignored local storage and an independent personal backup; do not commit resume binaries.
+
 Current media decisions:
 
 - Protected media management is available under `/api/v1/admin/media`; it includes signed-upload descriptors, idempotent registration, paginated listing, usage-aware detail, alt updates, and explicit deletion.
 - Cloudinary integration is isolated behind `src/modules/media/providers/cloudinary-media-provider.js`. Domain services and controllers consume the provider interface rather than importing the Cloudinary SDK.
 - Signed browser uploads use unique managed public IDs, `overwrite=false`, SHA-256 signatures, an application tag, and an image-format allowlist. The API secret never appears in responses.
 - `MediaAsset.providerAssetId` stores Cloudinary's immutable `asset_id`. Registration fetches authoritative metadata through the provider instead of trusting URL, dimensions, format, or byte counts from the browser.
+- `MediaAsset.kind` distinguishes `image` and `document`. Existing records without the persisted field remain legacy-compatible images; project media validation accepts only image-kind assets. The only current document flow is the managed profile PDF resume.
 - Media lists use page-based pagination with default limit 24, maximum limit 100, and descending `createdAt`/`_id` ordering.
 - Admin media serializers expose the delivery URL and useful metadata but omit provider asset IDs and persistence internals.
-- Media deletion is blocked while any project references the asset. Unused assets become `pendingDeletion` before provider deletion; metadata is removed only after provider deletion succeeds or reports the asset already absent.
+- Media deletion is blocked while any project or the Site Profile references the asset. Unused assets become `pendingDeletion` before provider deletion; metadata is removed only after provider deletion succeeds or reports the asset already absent.
 - Cloudinary environment values are optional as a complete group so the application can start before provider setup. Media provider operations return `503` until all three values are configured.
 - Public media serialization uses provider-neutral `logo`, `homePreview`, and `screenshot` delivery presets. Cloudinary-specific URL transformations remain inside its provider adapter; frontend code must not construct provider URLs.
 

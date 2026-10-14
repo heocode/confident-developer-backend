@@ -338,6 +338,7 @@ function createServiceHarness({ featuredCount = 0, activeAssetCount = 1, existin
     primaryUpdates: [],
     deleted: [],
     findFilter: undefined,
+    mediaFilters: [],
     sort: undefined,
   }
   const session = { id: 'test-session' }
@@ -371,7 +372,8 @@ function createServiceHarness({ featuredCount = 0, activeAssetCount = 1, existin
   }
 
   const mediaAssetModel = {
-    countDocuments() {
+    countDocuments(filter) {
+      state.mediaFilters.push(filter)
       return sessionResult(activeAssetCount)
     },
   }
@@ -396,6 +398,10 @@ describe('admin project service', () => {
     assert.equal(state.saved.length, 1)
     assert.equal(state.saved[0].options.session, session)
     assert.equal(state.primaryUpdates.length, 1)
+    assert.deepEqual(state.mediaFilters[0].$or, [
+      { kind: 'image' },
+      { kind: { $exists: false } },
+    ])
     assert.deepEqual(state.primaryUpdates[0][1], { $set: { 'home.primary': false } })
     assert.equal(state.primaryUpdates[0][2].session, session)
   })
