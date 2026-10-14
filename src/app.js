@@ -19,6 +19,8 @@ import { createMediaService } from './modules/media/media-service.js'
 import { createCloudinaryMediaProvider } from './modules/media/providers/cloudinary-media-provider.js'
 import { createAdminProjectService } from './modules/projects/admin/admin-project-service.js'
 import { createPublicProjectService } from './modules/projects/public/public-project-service.js'
+import { createAdminServiceService } from './modules/services/admin/admin-service-service.js'
+import { createPublicServiceService } from './modules/services/public/public-service-service.js'
 
 export function createApp({
   environment = loadEnvironment(),
@@ -30,6 +32,8 @@ export function createApp({
   mediaService = createMediaService({ mediaProvider }),
   projectService = createAdminProjectService(),
   publicProjectService = createPublicProjectService(),
+  serviceService = createAdminServiceService(),
+  publicServiceService = createPublicServiceService(),
 } = {}) {
   const app = express()
   const allowedOrigins = environment.clientOrigins
@@ -82,6 +86,8 @@ export function createApp({
       mediaService,
       projectService,
       publicProjectService,
+      serviceService,
+      publicServiceService,
       environment,
       loginRateLimitOptions,
     }),

@@ -10,12 +10,16 @@ import { requireAdminSession } from '../modules/auth/require-admin-session.js'
 import { createAdminMediaRouter } from '../modules/media/admin/admin-media-routes.js'
 import { createAdminProjectRouter } from '../modules/projects/admin/admin-project-routes.js'
 import { createPublicProjectRouter } from '../modules/projects/public/public-project-routes.js'
+import { createAdminServiceRouter } from '../modules/services/admin/admin-service-routes.js'
+import { createPublicServiceRouter } from '../modules/services/public/public-service-routes.js'
 
 export function createV1Router({
   authService,
   mediaService,
   projectService,
   publicProjectService,
+  serviceService,
+  publicServiceService,
   environment,
   loginRateLimitOptions,
 }) {
@@ -36,6 +40,7 @@ export function createV1Router({
     '/projects',
     createPublicProjectRouter({ projectService: publicProjectService, mediaService }),
   )
+  router.use('/services', createPublicServiceRouter({ serviceService: publicServiceService }))
   router.use(
     '/admin',
     noStore,
@@ -51,6 +56,7 @@ export function createV1Router({
   })
   router.use('/admin/media', createAdminMediaRouter({ mediaService }))
   router.use('/admin/projects', createAdminProjectRouter({ projectService }))
+  router.use('/admin/services', createAdminServiceRouter({ serviceService }))
 
   return router
 }

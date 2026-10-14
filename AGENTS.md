@@ -45,6 +45,7 @@ The React, TypeScript, and Vite frontend lives in a separate repository. Do not 
 - `src/modules`: production feature modules. Keep feature-specific models, services, controllers, routes, validation, and serializers together.
 - `src/modules/auth`: administrator identity, opaque sessions, cookie policy, authentication service and HTTP delivery, login validation, safe admin serialization, and session middleware.
 - `src/modules/projects`: the production Projects module. Its shared `PortfolioProject` model is at the module root and protected write behavior is under `admin`.
+- `src/modules/services`: the production Services module. Its shared `PortfolioService` model is isolated from coursework services, with protected writes under `admin` and public reads under `public`.
 - `src/modules/media`: the production Media module. Shared asset persistence and lifecycle services live at the module root, provider adapters live under `providers`, and protected HTTP delivery lives under `admin`.
 - `src/middleware`: shared Express middleware and error handling.
 - `test`: automated tests organized by configuration, coursework compatibility, and production feature module.
@@ -129,7 +130,7 @@ Current compatibility decisions:
 - All portfolio content must be manageable through the authenticated admin API. There is one owner administrator, no public signup, and no production user-management CRUD.
 - Production projects use their own collection and require configurable Home selection, primary-project selection, separate Home/Projects-page ordering, individual theme colors, logos, Home previews, screenshots, a displayed position, date ranges, build breakdowns, and external links.
 - References will require three ratings, moderation state, pagination, deletion ownership, and abuse prevention. New submissions start pending. Submitter email is private and must never appear in public responses.
-- Services will require display order and UI metadata such as icons and colors.
+- Production services use their own collection, publication lifecycle, separate Home/Services-page ordering, Home placement, and allowlisted frontend-owned icon and tone keys.
 - Contact inquiries, profile posts, GitHub data, media assets, likes, and views remain separate concerns rather than being forced into the four coursework resources.
 - Profile posts form a first-party personal mini-blog. Likes and views record real, idempotent or time-deduplicated interactions rather than decorative seed values.
 - Fetch GitHub data through the backend and persist a cache snapshot; public frontend requests must not depend on a live GitHub request.
@@ -159,6 +160,16 @@ Current project persistence decisions:
 - Initial Unicon, SuperSauced, and DomSot content is defined in `scripts/project-import-manifest.js`; its PNG source files live under the ignored `makets/project-assets` directory. `npm run projects:import -- --dry-run` validates the complete local plan without credentials, network requests, or external writes.
 - The interactive `npm run projects:import` command uses only the existing Auth, Media, and Projects HTTP APIs. It never bypasses domain validation with direct MongoDB or provider writes, never accepts credentials through arguments or environment variables, warns that login rotates the existing administrator session, and requires separate confirmations for content changes and publication.
 - Import progress is stored in the ignored owner-only `output/project-import-state.json`. Content hashes and media IDs permit safe resume, existing nested project IDs remain stable when their semantic item matches, and superseded media is recorded for manual lifecycle review rather than deleted automatically.
+
+Current service persistence decisions:
+
+- `PortfolioService` uses the explicit `portfolio_services` collection and never shares the coursework `services` collection.
+- Draft services require slug and title. Publication additionally requires description plus allowlisted `icon` and `tone` keys; `publishedAt` is server-owned and assigned on first publication.
+- Service icons (`product-ui-ux`, `mobile-development`, `web-development`, and `backend-development`) identify frontend-owned SVG assets. Tones (`product`, `mobile`, `web`, and `backend`) identify frontend-owned visual themes; the backend stores no SVG paths, imported assets, CSS classes, or color literals.
+- Home placement uses `home.featured` and `home.order`; `servicesPageOrder` remains separate for the future dedicated Services page. The service layer limits Home to four published featured services inside a MongoDB transaction.
+- Protected CRUD is available at `/api/v1/admin/services` and `/:id`. Public reads are available at `GET /api/v1/services` and `GET /api/v1/services?placement=home`; both expose only published services through an explicit allowlist and deterministic server ordering.
+- Detail-only capabilities, tools, related projects, showcase media, and `GET /api/v1/services/:slug` are deferred until the dedicated Services page is implemented from its approved assets. Do not invent placeholder fields in the meantime.
+- Initial Home services are defined in `scripts/service-import-manifest.js`. `npm run services:import -- --dry-run` validates them offline; the interactive importer uses the existing authenticated Services API, prepares drafts before a separate publication confirmation, and is safely repeatable by slug.
 
 Current media decisions:
 

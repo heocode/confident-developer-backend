@@ -30,6 +30,8 @@ Production code is moving incrementally from horizontal layer directories to fea
 
 The Projects module is located at `src/modules/projects`. Its `PortfolioProject` model is shared at the module root, while authenticated project commands and admin HTTP delivery live under `src/modules/projects/admin`. A public subdirectory is created only when the public Projects API is implemented; empty placeholder modules are not used.
 
+The Services module is located at `src/modules/services`. Its production-only `PortfolioService` model is shared at the module root, while authenticated commands and public reads are separated under `admin` and `public`. It never reuses the coursework service collection.
+
 The Media module is located at `src/modules/media`. Shared asset persistence and lifecycle behavior live at the module root, Cloudinary is isolated under `providers`, and authenticated media HTTP delivery lives under `admin`.
 
 The Authentication module is located at `src/modules/auth`. It owns administrator and session persistence, authentication business logic, cookie policy, login validation, safe admin serialization, authentication routes, and the middleware used to protect the admin API. Cross-cutting rate limiting, trusted-origin checks, request validation, no-store policy, and global error handling remain shared middleware.
@@ -87,11 +89,19 @@ GET /api/v1/projects/:slug
 
 The default collection contains published projects ordered by `projectsPageOrder` and `_id`. Home placement contains only published featured projects ordered by `home.order` and `_id`. Both use the same card representation, including links; detail lookup uses the public slug and adds `scope` plus ordered screenshots. The frontend may map `/projects/:slug` to the same accordion-style Projects page while the API remains under `/api/v1/projects/:slug`.
 
+Implemented service routes:
+
+```text
+GET /api/v1/services
+GET /api/v1/services?placement=home
+```
+
+The default collection contains published services ordered by `servicesPageOrder` and `_id`. Home placement contains only published featured services ordered by `home.order` and `_id`. Both use the same Home-ready public representation; detail lookup is intentionally deferred until the dedicated Services page fields and original assets are implemented.
+
 Remaining planned routes:
 
 ```text
 GET /api/v1/profile
-GET /api/v1/services
 GET /api/v1/services/:slug
 GET /api/v1/references
 GET /api/v1/posts
@@ -101,7 +111,7 @@ GET /api/v1/github-summary
 
 Only published projects, services, posts, and approved references are returned. List responses expose only the fields needed by their cards; detail routes may expose richer public fields.
 
-Successful public project responses send `Cache-Control: public, max-age=0, s-maxage=60, stale-while-revalidate=300` and `CDN-Cache-Control: max-age=60, stale-while-revalidate=300`. Express sets these headers only after successful service and serialization work, so validation, not-found, and server errors are not cached. The dedicated CDN header makes caching explicit for Vercel external rewrites; an existing Vercel project must still verify or enable external-origin caching in its CDN configuration. Unpublish/archive changes are therefore eventually visible within the bounded cache window rather than instantly purged; targeted Vercel cache invalidation can be added later if immediate emergency removal becomes a product requirement.
+Successful public project and service responses send `Cache-Control: public, max-age=0, s-maxage=60, stale-while-revalidate=300` and `CDN-Cache-Control: max-age=60, stale-while-revalidate=300`. Express sets these headers only after successful service and serialization work, so validation, not-found, and server errors are not cached. The dedicated CDN header makes caching explicit for Vercel external rewrites; an existing Vercel project must still verify or enable external-origin caching in its CDN configuration. Unpublish/archive changes are therefore eventually visible within the bounded cache window rather than instantly purged; targeted Vercel cache invalidation can be added later if immediate emergency removal becomes a product requirement.
 
 ### Public write routes
 
@@ -156,6 +166,18 @@ DELETE /api/v1/admin/projects/:id
 
 The collection route optionally filters by `status` and uses descending creation time plus `_id` for deterministic admin ordering. Create and update bodies are strict allowlists. `publishedAt` is server-owned and assigned at first publication.
 
+Implemented service routes are:
+
+```text
+POST   /api/v1/admin/services
+GET    /api/v1/admin/services
+GET    /api/v1/admin/services/:id
+PATCH  /api/v1/admin/services/:id
+DELETE /api/v1/admin/services/:id
+```
+
+The collection route optionally filters by `status` and uses descending creation time plus `_id`. Writes use strict allowlists, merge partial Home placement updates, and enforce the four-service Home limit transactionally.
+
 Implemented media routes are:
 
 ```text
@@ -173,8 +195,6 @@ Remaining planned route families are:
 
 ```text
 /api/v1/admin/profile
-/api/v1/admin/projects
-/api/v1/admin/services
 /api/v1/admin/references
 /api/v1/admin/inquiries
 /api/v1/admin/posts
@@ -226,7 +246,11 @@ Project color describes the visual identity of the individual project, not a dev
 
 ### Service
 
-Services gain a stable unique slug, publication state, display order, short and long descriptions, icon key, color/theme metadata, capability items, tool labels, media, and references to related projects.
+Production services are stored in the explicit `portfolio_services` collection. The Home-ready model contains a unique stable slug, title, description, `draft`/`published`/`archived` state, allowlisted icon and tone keys, Home placement and order, a separate Services-page order, server-owned first-publication time, and persistence timestamps.
+
+The icon key selects one of the frontend-owned service SVGs, and the tone key selects a frontend-owned CSS theme. The API does not store or return source paths, imported SVG modules, CSS class names, or color literals. Published services require description, icon, and tone; Home contains at most four published featured services. Public serializers omit state, internal order values, timestamps, and MongoDB internals because response order is authoritative.
+
+Capabilities, tool presentation, related projects, showcase media, and slug detail are deliberately deferred until the dedicated Services page is implemented. They will extend this model without changing the Home list contract.
 
 ### Reference
 

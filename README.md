@@ -42,6 +42,8 @@ npm test       Run the Node.js test suite
 npm run admin:create  Interactively provision the single production administrator
 npm run projects:import -- --dry-run  Validate the local project import without network access
 npm run projects:import  Interactively import the approved projects through the Admin API
+npm run services:import -- --dry-run  Validate the local service import without network access
+npm run services:import  Interactively import the approved services through the Admin API
 ```
 
 ## Assignment references
@@ -62,6 +64,13 @@ Public project endpoints are:
 
 They return only published projects. The collection is ordered for the Projects page by default, while `placement=home` returns featured Home projects in their configured order. Detail lookup uses the public slug rather than a MongoDB ID. Successful public responses are briefly cacheable by shared CDNs; validation and not-found errors are not.
 
+Public service endpoints are:
+
+- `GET /api/v1/services`
+- `GET /api/v1/services?placement=home`
+
+They return only published services. The default collection uses Services-page order, while Home placement filters featured services and uses its own configured order. Icon and tone values are stable keys for frontend-owned SVG and CSS mappings; the API never returns frontend asset paths or color literals.
+
 Admin authentication endpoints are:
 
 - `POST /api/v1/auth/login`
@@ -79,6 +88,14 @@ Authenticated project management endpoints are:
 - `DELETE /api/v1/admin/projects/:id`
 
 Project writes require the configured frontend `Origin`. Deleting a project does not delete its referenced media assets or provider files.
+
+Authenticated service management endpoints are:
+
+- `POST /api/v1/admin/services`
+- `GET /api/v1/admin/services`
+- `GET /api/v1/admin/services/:id`
+- `PATCH /api/v1/admin/services/:id`
+- `DELETE /api/v1/admin/services/:id`
 
 Authenticated media management endpoints are:
 
@@ -98,6 +115,10 @@ The versioned manifest in `scripts/project-import-manifest.js` maps the approved
 The apply command requires an interactive terminal, a running configured API, and the existing administrator credentials. It signs in through the Auth API, uploads media through the Media API, and creates or updates drafts through the Projects API; it never writes directly to MongoDB or Cloudinary. Login rotates the administrator's existing session. Separate confirmations guard remote changes and final publication, and credentials are neither accepted as command arguments nor written to disk.
 
 Interrupted runs resume from `output/project-import-state.json`, which is ignored by Git and written with owner-only permissions. The state retains content hashes and registered media IDs, preserves stable nested project IDs on updates, and records superseded assets for later review without deleting them automatically. Use `--base-url` and `--origin` to target a deployed API; non-local targets must use HTTPS.
+
+## Initial service content import
+
+The service manifest in `scripts/service-import-manifest.js` contains the approved Product & UI/UX Design, Mobile Development, Web Development, and Backend & Architecture Home content. Its dry-run validates all content, presentation keys, and unique ordering without network access. Apply mode uses the authenticated Services API, updates records by slug, prepares all records as drafts, and asks separately before publication. As with project import, login rotates the existing administrator session and credentials are never accepted through command arguments or stored on disk.
 
 ## Coursework API
 

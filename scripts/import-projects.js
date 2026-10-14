@@ -1,7 +1,5 @@
 import 'dotenv/config'
 
-import { stdin as input, stdout as output } from 'node:process'
-import { createInterface } from 'node:readline/promises'
 import { fileURLToPath } from 'node:url'
 import { dirname, resolve } from 'node:path'
 
@@ -15,43 +13,17 @@ import {
   parseImportArguments,
   saveImportState,
 } from './project-importer.js'
-import { promptHidden } from './utils/prompt-hidden.js'
+import {
+  confirm,
+  readAdminCredentials,
+  requireInteractiveTerminal,
+} from './utils/import-prompts.js'
 
 const workspaceRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const statePath = resolve(workspaceRoot, 'output/project-import-state.json')
 
 function formatBytes(bytes) {
   return `${(bytes / 1024).toFixed(1)} KB`
-}
-
-function requireInteractiveTerminal() {
-  if (!input.isTTY || !output.isTTY) {
-    throw new Error('Project import requires an interactive terminal')
-  }
-}
-
-async function ask(question) {
-  const prompts = createInterface({ input, output })
-  try {
-    return (await prompts.question(question)).trim()
-  } finally {
-    prompts.close()
-  }
-}
-
-async function confirm(question) {
-  return (await ask(`${question} [y/N] `)).toLowerCase() === 'y'
-}
-
-async function readCredentials() {
-  const email = (await ask('Admin email: ')).toLowerCase()
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) {
-    throw new Error('A valid admin email is required')
-  }
-
-  const password = await promptHidden('Admin password: ')
-  if (!password) throw new Error('Admin password is required')
-  return { email, password }
 }
 
 function printLocalPlan(plan, options) {
@@ -190,7 +162,7 @@ async function run() {
     return
   }
 
-  requireInteractiveTerminal()
+  requireInteractiveTerminal('Project import')
   const state = await loadImportState(statePath)
   state.orphanedMediaAssetIds ??= []
   state.orphanedProviderAssetIds ??= []
@@ -205,7 +177,7 @@ async function run() {
     return
   }
 
-  const credentials = await readCredentials()
+  const credentials = await readAdminCredentials()
   const api = createImportApiClient(options)
 
   try {
