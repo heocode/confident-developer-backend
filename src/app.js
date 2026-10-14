@@ -19,6 +19,7 @@ import { createGitHubService } from './modules/github/github-service.js'
 import { createGitHubRestProvider } from './modules/github/providers/github-rest-provider.js'
 import { createMediaService } from './modules/media/media-service.js'
 import { createCloudinaryMediaProvider } from './modules/media/providers/cloudinary-media-provider.js'
+import { createProfilePostService } from './modules/profile-post/profile-post-service.js'
 import { createAdminProjectService } from './modules/projects/admin/admin-project-service.js'
 import { createPublicProjectService } from './modules/projects/public/public-project-service.js'
 import { createAdminServiceService } from './modules/services/admin/admin-service-service.js'
@@ -29,11 +30,14 @@ export function createApp({
   enableCourseworkApi = environment.enableCourseworkApi,
   apiRateLimitOptions,
   loginRateLimitOptions,
+  profileLikeRateLimitOptions,
+  profileViewRateLimitOptions,
   authService = createAuthService(),
   githubProvider = createGitHubRestProvider(environment.github),
   githubService = createGitHubService({ githubProvider }),
   mediaProvider = createCloudinaryMediaProvider(environment.cloudinary),
   mediaService = createMediaService({ mediaProvider }),
+  profilePostService = createProfilePostService(),
   projectService = createAdminProjectService(),
   publicProjectService = createPublicProjectService(),
   serviceService = createAdminServiceService(),
@@ -89,12 +93,15 @@ export function createApp({
       authService,
       githubService,
       mediaService,
+      profilePostService,
       projectService,
       publicProjectService,
       serviceService,
       publicServiceService,
       environment,
       loginRateLimitOptions,
+      profileLikeRateLimitOptions,
+      profileViewRateLimitOptions,
     }),
   )
 

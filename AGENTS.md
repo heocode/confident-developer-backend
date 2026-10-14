@@ -48,6 +48,7 @@ The React, TypeScript, and Vite frontend lives in a separate repository. Do not 
 - `src/modules/projects`: the production Projects module. Its shared `PortfolioProject` model is at the module root and protected write behavior is under `admin`.
 - `src/modules/services`: the production Services module. Its shared `PortfolioService` model is isolated from coursework services, with protected writes under `admin` and public reads under `public`.
 - `src/modules/media`: the production Media module. Shared asset persistence and lifecycle services live at the module root, provider adapters live under `providers`, and protected HTTP delivery lives under `admin`.
+- `src/modules/profile-post`: the singleton Home Profile Post, revision-scoped anonymous likes and views, visitor-cookie policy, and separate public/admin HTTP delivery.
 - `src/middleware`: shared Express middleware and error handling.
 - `test`: automated tests organized by configuration, coursework compatibility, and production feature module.
 - `docs/assignment`: immutable coursework reference files.
@@ -133,7 +134,7 @@ Current compatibility decisions:
 - References will require three ratings, moderation state, pagination, deletion ownership, and abuse prevention. New submissions start pending. Submitter email is private and must never appear in public responses.
 - Production services use their own collection, publication lifecycle, separate Home/Services-page ordering, Home placement, and allowlisted frontend-owned icon and tone keys.
 - Contact inquiries, profile posts, GitHub data, media assets, likes, and views remain separate concerns rather than being forced into the four coursework resources.
-- Profile posts form a first-party personal mini-blog. Likes and views record real, idempotent or time-deduplicated interactions rather than decorative seed values.
+- The current Profile Post is a singleton Home-section post, not yet the future general mini-blog. Its likes and views record real, idempotent or time-deduplicated interactions rather than decorative seed values.
 - Fetch GitHub data through the backend and persist a cache snapshot; public frontend requests must not depend on a live GitHub request.
 - Use Cloudinary Free initially through a provider-neutral media service. Use signed direct browser uploads, keep secrets server-side, store only media metadata in MongoDB, and constrain formats, transformations, and upload sizes.
 - Extend schemas and contracts incrementally when the associated product feature is implemented.
@@ -181,6 +182,16 @@ Current GitHub summary decisions:
 - `POST /api/v1/admin/github/refresh` is the authenticated explicit initialization and refresh path. Provider failures retain the last successful counts and persist only an allowlisted failure code.
 - Snapshots become stale after six hours. A single-page repository response stores its ETag and uses conditional refresh; paginated results avoid treating one page validator as authoritative for the whole account.
 - Successful public summary responses use the shared public cache policy. Validation and availability errors are not cacheable; admin refresh responses remain `private, no-store`.
+
+Current Profile Post decisions:
+
+- `ProfilePost` uses the immutable singleton key `home` in `profile_posts`. It stores 1–500 characters of plain text, a revision, server-owned content date, and denormalized non-negative integer counters.
+- Public delivery is available at `GET /api/v1/profile-post`; personalized state is available at `GET /api/v1/profile-post/interaction?revision=<number>`. The public post has a 15-second shared-cache lifetime and 30-second stale window; personalized and mutation responses are `private, no-store`.
+- Public interactions use `PUT` and `DELETE /api/v1/profile-post/like` plus `POST /api/v1/profile-post/view`. Bodies contain only the rendered integer revision, unsafe methods require a trusted Origin, stale revisions return `409`, and separate in-memory rate limits apply.
+- Anonymous visitors receive a 256-bit host-only `HttpOnly`, `SameSite=Lax` cookie scoped to `/api/v1`; production uses the `__Secure-` name and `Secure`. Only its SHA-256 hash is persisted, never the raw token or raw IP.
+- Likes are idempotent per post revision and visitor. Views count at most once per revision and visitor in 24 hours. Compound unique indexes protect both identities under concurrency.
+- Protected management is available at `GET` and `PUT /api/v1/admin/profile-post`. A strict PUT accepts only `text`; identical normalized text is a no-op, while changed text increments revision, updates the date, zeros counters, and deletes old interaction records in one Atlas transaction.
+- The singleton Home post is intentionally separate from the future first-party mini-blog. Do not expand it into generic articles until those screens and contracts are approved.
 
 Current media decisions:
 

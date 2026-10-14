@@ -78,6 +78,16 @@ The public GitHub summary endpoint is:
 
 It returns the latest MongoDB snapshot of non-fork public repository count and unique reported language count. Public rendering never waits on GitHub. A stale snapshot is returned immediately while one background refresh begins; a missing initial snapshot returns `503` until an administrator refreshes it.
 
+Public Profile Post endpoints are:
+
+- `GET /api/v1/profile-post`
+- `GET /api/v1/profile-post/interaction?revision=<number>`
+- `PUT /api/v1/profile-post/like`
+- `DELETE /api/v1/profile-post/like`
+- `POST /api/v1/profile-post/view`
+
+The public post contains the current text, revision, content date, and real like/view counters. Like and view bodies contain the rendered `revision`. Anonymous interactions use a host-only `HttpOnly` visitor cookie; likes are idempotent and views are counted at most once per visitor in 24 hours. Mutation and personalized interaction responses are never cached.
+
 Admin authentication endpoints are:
 
 - `POST /api/v1/auth/login`
@@ -109,6 +119,13 @@ The authenticated GitHub refresh endpoint is:
 - `POST /api/v1/admin/github/refresh`
 
 It initializes or explicitly refreshes the snapshot. The optional GitHub token stays server-side, provider errors retain the last successful public counts, and admin responses are never cached.
+
+Authenticated Profile Post endpoints are:
+
+- `GET /api/v1/admin/profile-post`
+- `PUT /api/v1/admin/profile-post`
+
+The `PUT` body is `{ "text": "..." }`. Replacing the text creates a new revision, updates its displayed date, and transactionally resets likes and views. Sending the existing text is a no-op.
 
 Authenticated media management endpoints are:
 

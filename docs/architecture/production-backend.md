@@ -34,6 +34,8 @@ The Services module is located at `src/modules/services`. Its production-only `P
 
 The GitHub module is located at `src/modules/github`. It owns the singleton snapshot and refresh policy, isolates GitHub REST access under `providers`, and separates the public summary from the authenticated refresh endpoint.
 
+The Profile Post module is located at `src/modules/profile-post`. It owns the singleton Home post, anonymous visitor identity, revision-scoped likes and views, and separate public and admin delivery.
+
 The Media module is located at `src/modules/media`. Shared asset persistence and lifecycle behavior live at the module root, Cloudinary is isolated under `providers`, and authenticated media HTTP delivery lives under `admin`.
 
 The Authentication module is located at `src/modules/auth`. It owns administrator and session persistence, authentication business logic, cookie policy, login validation, safe admin serialization, authentication routes, and the middleware used to protect the admin API. Cross-cutting rate limiting, trusted-origin checks, request validation, no-store policy, and global error handling remain shared middleware.
@@ -108,6 +110,15 @@ GET /api/v1/github-summary
 
 It returns the last successful MongoDB snapshot containing non-fork public repository count, the union count of positive-byte languages reported by GitHub, and refresh time. A public request never waits on GitHub. Missing initial data returns `503`; stale data is returned immediately while a single background refresh starts.
 
+Implemented Profile Post read routes are:
+
+```text
+GET /api/v1/profile-post
+GET /api/v1/profile-post/interaction?revision=<number>
+```
+
+The first route returns the current Home post and its aggregate counters with a 15-second shared-cache lifetime. The personalized interaction route reports whether the current visitor liked the rendered revision and is always `private, no-store`.
+
 Remaining planned routes:
 
 ```text
@@ -120,19 +131,26 @@ GET /api/v1/posts/:slug
 
 Only published projects, services, posts, and approved references are returned. List responses expose only the fields needed by their cards; detail routes may expose richer public fields.
 
-Successful public project, service, and GitHub summary responses send `Cache-Control: public, max-age=0, s-maxage=60, stale-while-revalidate=300` and `CDN-Cache-Control: max-age=60, stale-while-revalidate=300`. Express sets these headers only after successful service and serialization work, so validation, not-found, availability, and server errors are not cached. The dedicated CDN header makes caching explicit for Vercel external rewrites; an existing Vercel project must still verify or enable external-origin caching in its CDN configuration. Unpublish/archive changes are therefore eventually visible within the bounded cache window rather than instantly purged; targeted Vercel cache invalidation can be added later if immediate emergency removal becomes a product requirement.
+Successful public project, service, and GitHub summary responses send `Cache-Control: public, max-age=0, s-maxage=60, stale-while-revalidate=300` and `CDN-Cache-Control: max-age=60, stale-while-revalidate=300`. The Profile Post uses a shorter 15-second shared lifetime and 30-second stale window so counter and content changes converge sooner. Express sets these headers only after successful service and serialization work, so validation, not-found, availability, and server errors are not cached. The dedicated CDN header makes caching explicit for Vercel external rewrites; an existing Vercel project must still verify or enable external-origin caching in its CDN configuration. Content changes are eventually visible within the bounded cache window rather than instantly purged; targeted Vercel cache invalidation can be added later if immediate emergency removal becomes a product requirement.
 
 ### Public write routes
 
-Planned routes:
+Implemented Profile Post interaction routes:
+
+```text
+PUT    /api/v1/profile-post/like
+DELETE /api/v1/profile-post/like
+POST   /api/v1/profile-post/view
+```
+
+Their strict request bodies contain only the currently rendered `revision`. They require an exact trusted `Origin`, have dedicated in-memory rate limits, and always return `private, no-store`. A stale revision returns `409` instead of applying an interaction to replacement content.
+
+Remaining planned routes:
 
 ```text
 POST   /api/v1/references
 DELETE /api/v1/references/:id/submission
 POST   /api/v1/contact
-POST   /api/v1/posts/:id/likes
-DELETE /api/v1/posts/:id/likes
-POST   /api/v1/posts/:id/views
 ```
 
 Reference submissions always start in `pending` state. A submitter's email is used only for verification and management and is never returned by public reference routes. The frontend must state:
@@ -141,7 +159,7 @@ Reference submissions always start in `pending` state. A submitter's email is us
 
 A reference deletion-management token is returned only at submission time; only its hash is stored. Contact inquiries and reference submissions are rate-limited, size-limited, validated, and protected by a configurable anti-spam challenge before launch.
 
-Likes and views represent recorded interactions, not decorative seed values. An anonymous first-party visitor identifier may be stored in a secure cookie and only a one-way derivative is persisted. Likes are idempotent per post and visitor. Views are deduplicated within a defined time window. Raw IP addresses are not stored for analytics.
+Profile Post likes and views represent recorded interactions, not decorative seed values. A 256-bit anonymous first-party visitor identifier is stored in a host-only `HttpOnly`, `SameSite=Lax` cookie that becomes `Secure` in production; only its SHA-256 hash is persisted. Likes are idempotent per revision and visitor. Views are deduplicated per revision and visitor for 24 hours. Raw IP addresses are not persisted for these interactions.
 
 ### Authentication routes
 
@@ -194,6 +212,15 @@ POST /api/v1/admin/github/refresh
 ```
 
 It initializes or refreshes the singleton snapshot through the GitHub provider. The request accepts no writable settings. Failures preserve the last successful counts, persist only an allowlisted operational failure code, and return a safe provider error.
+
+Implemented Profile Post administration routes are:
+
+```text
+GET /api/v1/admin/profile-post
+PUT /api/v1/admin/profile-post
+```
+
+The strict replacement body contains only plain text of 1–500 characters. Changing it increments the revision, updates the content date, and transactionally clears interaction records and aggregate counters. Replacing it with identical normalized text is a no-op.
 
 Implemented media routes are:
 
@@ -278,7 +305,9 @@ Contact inquiries store name, private email, message, selected scope, budget ban
 
 ### ProfilePost
 
-Posts store a stable unique slug, title, excerpt, body, publication state/date, display metadata, optional cover asset, tags, and denormalized like/view counters. Interaction records enforce idempotency and allow counters to be reconciled.
+`ProfilePost` is currently a singleton Home-section document in `profile_posts`, selected by the immutable unique key `home`. It stores plain text, an integer revision, the content-update date, and non-negative integer like/view counters. This deliberately does not invent a general article model before the future mini-blog is designed.
+
+`ProfilePostLike` and `ProfilePostView` store the post reference, revision, and a non-selected visitor-token hash with a unique compound index. Views also store the last counted time. Updating the post to different text runs in a MongoDB transaction: the revision advances, the displayed date changes, aggregate counters return to zero, and previous interaction documents are removed atomically. Consequently this flow requires the replica-set transaction support supplied by Atlas.
 
 ### GitHubSnapshot
 

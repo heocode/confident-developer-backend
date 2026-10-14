@@ -10,6 +10,8 @@ import { requireAdminSession } from '../modules/auth/require-admin-session.js'
 import { createAdminGitHubRouter } from '../modules/github/admin/admin-github-routes.js'
 import { createPublicGitHubRouter } from '../modules/github/public/public-github-routes.js'
 import { createAdminMediaRouter } from '../modules/media/admin/admin-media-routes.js'
+import { createAdminProfilePostRouter } from '../modules/profile-post/admin/admin-profile-post-routes.js'
+import { createPublicProfilePostRouter } from '../modules/profile-post/public/public-profile-post-routes.js'
 import { createAdminProjectRouter } from '../modules/projects/admin/admin-project-routes.js'
 import { createPublicProjectRouter } from '../modules/projects/public/public-project-routes.js'
 import { createAdminServiceRouter } from '../modules/services/admin/admin-service-routes.js'
@@ -19,12 +21,15 @@ export function createV1Router({
   authService,
   githubService,
   mediaService,
+  profilePostService,
   projectService,
   publicProjectService,
   serviceService,
   publicServiceService,
   environment,
   loginRateLimitOptions,
+  profileLikeRateLimitOptions,
+  profileViewRateLimitOptions,
 }) {
   const router = Router()
 
@@ -40,6 +45,15 @@ export function createV1Router({
 
   router.use('/auth', createAuthRouter({ authService, environment, loginRateLimitOptions }))
   router.use('/github-summary', createPublicGitHubRouter({ githubService }))
+  router.use(
+    '/profile-post',
+    createPublicProfilePostRouter({
+      profilePostService,
+      environment,
+      likeRateLimitOptions: profileLikeRateLimitOptions,
+      viewRateLimitOptions: profileViewRateLimitOptions,
+    }),
+  )
   router.use(
     '/projects',
     createPublicProjectRouter({ projectService: publicProjectService, mediaService }),
@@ -60,6 +74,7 @@ export function createV1Router({
   })
   router.use('/admin/media', createAdminMediaRouter({ mediaService }))
   router.use('/admin/github', createAdminGitHubRouter({ githubService }))
+  router.use('/admin/profile-post', createAdminProfilePostRouter({ profilePostService }))
   router.use('/admin/projects', createAdminProjectRouter({ projectService }))
   router.use('/admin/services', createAdminServiceRouter({ serviceService }))
 
