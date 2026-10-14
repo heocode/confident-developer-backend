@@ -19,7 +19,8 @@ REST API for the Confident Developer portfolio and COMP229 Assignment 2.
 4. Ensure the MongoDB connection string selects the `portfolio` database.
 5. Keep `ENABLE_COURSEWORK_API=false` for production development.
 6. Add all three `CLOUDINARY_*` values when testing media uploads; never commit them.
-7. Start the development server with `npm run dev`.
+7. Set `GITHUB_USERNAME` to the public portfolio account. `GITHUB_TOKEN` is optional and must remain secret.
+8. Start the development server with `npm run dev`.
 
 The API listens on port `3000` by default. Check it at `GET /api/health`.
 
@@ -71,6 +72,12 @@ Public service endpoints are:
 
 They return only published services. The default collection uses Services-page order, while Home placement filters featured services and uses its own configured order. Icon and tone values are stable keys for frontend-owned SVG and CSS mappings; the API never returns frontend asset paths or color literals.
 
+The public GitHub summary endpoint is:
+
+- `GET /api/v1/github-summary`
+
+It returns the latest MongoDB snapshot of non-fork public repository count and unique reported language count. Public rendering never waits on GitHub. A stale snapshot is returned immediately while one background refresh begins; a missing initial snapshot returns `503` until an administrator refreshes it.
+
 Admin authentication endpoints are:
 
 - `POST /api/v1/auth/login`
@@ -96,6 +103,12 @@ Authenticated service management endpoints are:
 - `GET /api/v1/admin/services/:id`
 - `PATCH /api/v1/admin/services/:id`
 - `DELETE /api/v1/admin/services/:id`
+
+The authenticated GitHub refresh endpoint is:
+
+- `POST /api/v1/admin/github/refresh`
+
+It initializes or explicitly refreshes the snapshot. The optional GitHub token stays server-side, provider errors retain the last successful public counts, and admin responses are never cached.
 
 Authenticated media management endpoints are:
 

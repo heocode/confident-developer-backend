@@ -7,6 +7,8 @@ import { validateRequest } from '../middleware/validate-request.js'
 import { serializeAdmin } from '../modules/auth/admin-serializer.js'
 import { createAuthRouter } from '../modules/auth/auth-routes.js'
 import { requireAdminSession } from '../modules/auth/require-admin-session.js'
+import { createAdminGitHubRouter } from '../modules/github/admin/admin-github-routes.js'
+import { createPublicGitHubRouter } from '../modules/github/public/public-github-routes.js'
 import { createAdminMediaRouter } from '../modules/media/admin/admin-media-routes.js'
 import { createAdminProjectRouter } from '../modules/projects/admin/admin-project-routes.js'
 import { createPublicProjectRouter } from '../modules/projects/public/public-project-routes.js'
@@ -15,6 +17,7 @@ import { createPublicServiceRouter } from '../modules/services/public/public-ser
 
 export function createV1Router({
   authService,
+  githubService,
   mediaService,
   projectService,
   publicProjectService,
@@ -36,6 +39,7 @@ export function createV1Router({
   })
 
   router.use('/auth', createAuthRouter({ authService, environment, loginRateLimitOptions }))
+  router.use('/github-summary', createPublicGitHubRouter({ githubService }))
   router.use(
     '/projects',
     createPublicProjectRouter({ projectService: publicProjectService, mediaService }),
@@ -55,6 +59,7 @@ export function createV1Router({
     })
   })
   router.use('/admin/media', createAdminMediaRouter({ mediaService }))
+  router.use('/admin/github', createAdminGitHubRouter({ githubService }))
   router.use('/admin/projects', createAdminProjectRouter({ projectService }))
   router.use('/admin/services', createAdminServiceRouter({ serviceService }))
 

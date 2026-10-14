@@ -44,6 +44,7 @@ The React, TypeScript, and Vite frontend lives in a separate repository. Do not 
 - `src/coursework`: frozen Assignment 2 compatibility models, controllers, routers, and supporting utilities.
 - `src/modules`: production feature modules. Keep feature-specific models, services, controllers, routes, validation, and serializers together.
 - `src/modules/auth`: administrator identity, opaque sessions, cookie policy, authentication service and HTTP delivery, login validation, safe admin serialization, and session middleware.
+- `src/modules/github`: cached GitHub portfolio statistics, the provider-neutral refresh service, GitHub REST adapter, public snapshot delivery, and protected manual refresh.
 - `src/modules/projects`: the production Projects module. Its shared `PortfolioProject` model is at the module root and protected write behavior is under `admin`.
 - `src/modules/services`: the production Services module. Its shared `PortfolioService` model is isolated from coursework services, with protected writes under `admin` and public reads under `public`.
 - `src/modules/media`: the production Media module. Shared asset persistence and lifecycle services live at the module root, provider adapters live under `providers`, and protected HTTP delivery lives under `admin`.
@@ -170,6 +171,16 @@ Current service persistence decisions:
 - Protected CRUD is available at `/api/v1/admin/services` and `/:id`. Public reads are available at `GET /api/v1/services` and `GET /api/v1/services?placement=home`; both expose only published services through an explicit allowlist and deterministic server ordering.
 - Detail-only capabilities, tools, related projects, showcase media, and `GET /api/v1/services/:slug` are deferred until the dedicated Services page is implemented from its approved assets. Do not invent placeholder fields in the meantime.
 - Initial Home services are defined in `scripts/service-import-manifest.js`. `npm run services:import -- --dry-run` validates them offline; the interactive importer uses the existing authenticated Services API, prepares drafts before a separate publication confirmation, and is safely repeatable by slug.
+
+Current GitHub summary decisions:
+
+- `GitHubSnapshot` uses the singleton key `portfolio` in the explicit `github_snapshots` collection. The public representation contains only `repositoryCount`, `languageCount`, and `refreshedAt`.
+- The GitHub REST adapter lists public owner repositories, excludes forks, follows validated `api.github.com` pagination, and counts the union of all positive-byte languages reported for those repositories. Language requests are sequential.
+- `GITHUB_USERNAME` configures the account. `GITHUB_TOKEN` is optional and server-only; it must never appear in API responses, persisted snapshots, or logs.
+- `GET /api/v1/github-summary` always reads MongoDB. A missing snapshot returns `503`; a stale snapshot is returned immediately while a single in-process background refresh begins, so public rendering never waits on GitHub.
+- `POST /api/v1/admin/github/refresh` is the authenticated explicit initialization and refresh path. Provider failures retain the last successful counts and persist only an allowlisted failure code.
+- Snapshots become stale after six hours. A single-page repository response stores its ETag and uses conditional refresh; paginated results avoid treating one page validator as authoritative for the whole account.
+- Successful public summary responses use the shared public cache policy. Validation and availability errors are not cacheable; admin refresh responses remain `private, no-store`.
 
 Current media decisions:
 

@@ -32,6 +32,8 @@ The Projects module is located at `src/modules/projects`. Its `PortfolioProject`
 
 The Services module is located at `src/modules/services`. Its production-only `PortfolioService` model is shared at the module root, while authenticated commands and public reads are separated under `admin` and `public`. It never reuses the coursework service collection.
 
+The GitHub module is located at `src/modules/github`. It owns the singleton snapshot and refresh policy, isolates GitHub REST access under `providers`, and separates the public summary from the authenticated refresh endpoint.
+
 The Media module is located at `src/modules/media`. Shared asset persistence and lifecycle behavior live at the module root, Cloudinary is isolated under `providers`, and authenticated media HTTP delivery lives under `admin`.
 
 The Authentication module is located at `src/modules/auth`. It owns administrator and session persistence, authentication business logic, cookie policy, login validation, safe admin serialization, authentication routes, and the middleware used to protect the admin API. Cross-cutting rate limiting, trusted-origin checks, request validation, no-store policy, and global error handling remain shared middleware.
@@ -98,6 +100,14 @@ GET /api/v1/services?placement=home
 
 The default collection contains published services ordered by `servicesPageOrder` and `_id`. Home placement contains only published featured services ordered by `home.order` and `_id`. Both use the same Home-ready public representation; detail lookup is intentionally deferred until the dedicated Services page fields and original assets are implemented.
 
+The implemented GitHub summary route is:
+
+```text
+GET /api/v1/github-summary
+```
+
+It returns the last successful MongoDB snapshot containing non-fork public repository count, the union count of positive-byte languages reported by GitHub, and refresh time. A public request never waits on GitHub. Missing initial data returns `503`; stale data is returned immediately while a single background refresh starts.
+
 Remaining planned routes:
 
 ```text
@@ -106,12 +116,11 @@ GET /api/v1/services/:slug
 GET /api/v1/references
 GET /api/v1/posts
 GET /api/v1/posts/:slug
-GET /api/v1/github-summary
 ```
 
 Only published projects, services, posts, and approved references are returned. List responses expose only the fields needed by their cards; detail routes may expose richer public fields.
 
-Successful public project and service responses send `Cache-Control: public, max-age=0, s-maxage=60, stale-while-revalidate=300` and `CDN-Cache-Control: max-age=60, stale-while-revalidate=300`. Express sets these headers only after successful service and serialization work, so validation, not-found, and server errors are not cached. The dedicated CDN header makes caching explicit for Vercel external rewrites; an existing Vercel project must still verify or enable external-origin caching in its CDN configuration. Unpublish/archive changes are therefore eventually visible within the bounded cache window rather than instantly purged; targeted Vercel cache invalidation can be added later if immediate emergency removal becomes a product requirement.
+Successful public project, service, and GitHub summary responses send `Cache-Control: public, max-age=0, s-maxage=60, stale-while-revalidate=300` and `CDN-Cache-Control: max-age=60, stale-while-revalidate=300`. Express sets these headers only after successful service and serialization work, so validation, not-found, availability, and server errors are not cached. The dedicated CDN header makes caching explicit for Vercel external rewrites; an existing Vercel project must still verify or enable external-origin caching in its CDN configuration. Unpublish/archive changes are therefore eventually visible within the bounded cache window rather than instantly purged; targeted Vercel cache invalidation can be added later if immediate emergency removal becomes a product requirement.
 
 ### Public write routes
 
@@ -178,6 +187,14 @@ DELETE /api/v1/admin/services/:id
 
 The collection route optionally filters by `status` and uses descending creation time plus `_id`. Writes use strict allowlists, merge partial Home placement updates, and enforce the four-service Home limit transactionally.
 
+The implemented GitHub administration route is:
+
+```text
+POST /api/v1/admin/github/refresh
+```
+
+It initializes or refreshes the singleton snapshot through the GitHub provider. The request accepts no writable settings. Failures preserve the last successful counts, persist only an allowlisted operational failure code, and return a safe provider error.
+
 Implemented media routes are:
 
 ```text
@@ -198,7 +215,6 @@ Remaining planned route families are:
 /api/v1/admin/references
 /api/v1/admin/inquiries
 /api/v1/admin/posts
-/api/v1/admin/github
 ```
 
 Admin serializers may include private operational fields, but never password hashes, raw session tokens, deletion-token hashes, or storage-provider secrets.
@@ -266,7 +282,9 @@ Posts store a stable unique slug, title, excerpt, body, publication state/date, 
 
 ### GitHubSnapshot
 
-GitHub data is fetched server-side and cached as a snapshot with source timestamps and refresh/error metadata. Public requests read the cache rather than calling GitHub directly. Refresh uses stale-while-revalidate behavior plus an authenticated manual refresh, so the feature does not depend on an always-awake free worker. A GitHub token is optional and remains server-only.
+GitHub data is fetched server-side and cached under the singleton `portfolio` key in `github_snapshots`. Public output contains only repository count, language count, and the last successful check time. Internal state retains a single-page repository ETag, last attempt time, and an allowlisted failure code; provider response bodies and credentials are never persisted.
+
+The REST adapter lists public owner repositories, excludes forks, validates every pagination and repository-language URL against `api.github.com`, and requests language breakdowns sequentially. A single-page list uses its ETag for conditional refresh. Paginated lists deliberately omit a partial validator. Snapshots become stale after six hours, at which point public reads return the existing value immediately and start one in-process background refresh. The authenticated refresh endpoint remains the explicit initialization and recovery mechanism. `GITHUB_TOKEN` is optional and server-only.
 
 ### MediaAsset
 

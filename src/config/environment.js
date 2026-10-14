@@ -15,6 +15,8 @@ const rawEnvironmentSchema = z
     CLOUDINARY_CLOUD_NAME: z.string().optional(),
     CLOUDINARY_API_KEY: z.string().optional(),
     CLOUDINARY_API_SECRET: z.string().optional(),
+    GITHUB_USERNAME: z.string().optional(),
+    GITHUB_TOKEN: z.string().optional(),
   })
   .passthrough()
 
@@ -91,6 +93,19 @@ function parseCloudinaryConfiguration(raw) {
   return Object.freeze({ cloudName, apiKey, apiSecret })
 }
 
+function parseGitHubConfiguration(raw) {
+  const username = raw.GITHUB_USERNAME?.trim()
+  const token = raw.GITHUB_TOKEN?.trim()
+
+  if (!username && !token) return null
+  if (!username) throw new Error('GITHUB_USERNAME is required when GITHUB_TOKEN is configured')
+  if (!/^[a-z\d](?:[a-z\d-]{0,37}[a-z\d])?$/i.test(username)) {
+    throw new Error('GITHUB_USERNAME is invalid')
+  }
+
+  return Object.freeze({ username: username.toLowerCase(), token: token || undefined })
+}
+
 export function getPort(value) {
   if (value === undefined || value === '') {
     return DEFAULT_PORT
@@ -123,5 +138,6 @@ export function loadEnvironment(source = process.env) {
     trustProxy: parseTrustProxy(raw.TRUST_PROXY),
     enableCourseworkApi: parseBoolean(raw.ENABLE_COURSEWORK_API, 'ENABLE_COURSEWORK_API'),
     cloudinary: parseCloudinaryConfiguration(raw),
+    github: parseGitHubConfiguration(raw),
   })
 }

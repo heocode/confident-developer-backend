@@ -15,6 +15,8 @@ import { userRouter } from './coursework/routes/user-routes.js'
 import { createApiRateLimiter } from './middleware/api-rate-limiter.js'
 import { errorHandler } from './middleware/error-handler.js'
 import { createAuthService } from './modules/auth/auth-service.js'
+import { createGitHubService } from './modules/github/github-service.js'
+import { createGitHubRestProvider } from './modules/github/providers/github-rest-provider.js'
 import { createMediaService } from './modules/media/media-service.js'
 import { createCloudinaryMediaProvider } from './modules/media/providers/cloudinary-media-provider.js'
 import { createAdminProjectService } from './modules/projects/admin/admin-project-service.js'
@@ -28,6 +30,8 @@ export function createApp({
   apiRateLimitOptions,
   loginRateLimitOptions,
   authService = createAuthService(),
+  githubProvider = createGitHubRestProvider(environment.github),
+  githubService = createGitHubService({ githubProvider }),
   mediaProvider = createCloudinaryMediaProvider(environment.cloudinary),
   mediaService = createMediaService({ mediaProvider }),
   projectService = createAdminProjectService(),
@@ -83,6 +87,7 @@ export function createApp({
     createApiRateLimiter(apiRateLimitOptions),
     createV1Router({
       authService,
+      githubService,
       mediaService,
       projectService,
       publicProjectService,

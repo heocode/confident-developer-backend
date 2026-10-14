@@ -15,6 +15,7 @@ describe('environment configuration', () => {
       trustProxy: false,
       enableCourseworkApi: false,
       cloudinary: null,
+      github: null,
     })
   })
 
@@ -66,6 +67,19 @@ describe('environment configuration', () => {
         }),
       /invalid characters/,
     )
+  })
+
+  it('loads an optional GitHub account and token without exposing unsafe usernames', () => {
+    assert.deepEqual(
+      loadEnvironment({ GITHUB_USERNAME: 'Heoposit', GITHUB_TOKEN: 'read-only-token' }).github,
+      { username: 'heoposit', token: 'read-only-token' },
+    )
+    assert.deepEqual(loadEnvironment({ GITHUB_USERNAME: 'heoposit' }).github, {
+      username: 'heoposit',
+      token: undefined,
+    })
+    assert.throws(() => loadEnvironment({ GITHUB_TOKEN: 'token-without-owner' }), /GITHUB_USERNAME/)
+    assert.throws(() => loadEnvironment({ GITHUB_USERNAME: '-invalid-' }), /GITHUB_USERNAME is invalid/)
   })
 
   it('rejects missing or unsafe production settings', () => {
