@@ -17,6 +17,7 @@ import { errorHandler } from './middleware/error-handler.js'
 import { createAntiSpamService } from './modules/anti-spam/anti-spam-service.js'
 import { createCloudflareTurnstileProvider } from './modules/anti-spam/providers/cloudflare-turnstile-provider.js'
 import { createAuthService } from './modules/auth/auth-service.js'
+import { createContactService } from './modules/contact/contact-service.js'
 import { createGitHubService } from './modules/github/github-service.js'
 import { createGitHubRestProvider } from './modules/github/providers/github-rest-provider.js'
 import { createMediaService } from './modules/media/media-service.js'
@@ -37,6 +38,7 @@ export function createApp({
   profileLikeRateLimitOptions,
   profileViewRateLimitOptions,
   referenceSubmissionRateLimitOptions,
+  contactSubmissionRateLimitOptions,
   authService = createAuthService(),
   githubProvider = createGitHubRestProvider(environment.github),
   githubService = createGitHubService({ githubProvider }),
@@ -46,6 +48,7 @@ export function createApp({
   profilePostService = createProfilePostService(),
   turnstileProvider = createCloudflareTurnstileProvider(environment.turnstile),
   antiSpamService = createAntiSpamService({ turnstileProvider }),
+  contactService = createContactService({ antiSpamService }),
   referenceService = createReferenceService({ antiSpamService, profileService }),
   projectService = createAdminProjectService(),
   publicProjectService = createPublicProjectService(),
@@ -105,6 +108,7 @@ export function createApp({
       profileService,
       profilePostService,
       referenceService,
+      contactService,
       projectService,
       publicProjectService,
       serviceService,
@@ -114,6 +118,7 @@ export function createApp({
       profileLikeRateLimitOptions,
       profileViewRateLimitOptions,
       referenceSubmissionRateLimitOptions,
+      contactSubmissionRateLimitOptions,
     }),
   )
 

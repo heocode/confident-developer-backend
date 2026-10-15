@@ -105,6 +105,12 @@ Public reference endpoints are:
 
 Only approved references appear in the public list. When their total count is zero, the response may include the configured profile-backed `emptyState`; otherwise that property is `null`. New submissions always begin as pending and require normalized profile fields, three ratings, the empty honeypot field `website`, and a valid Turnstile token. The frontend must retain the one-time `managementToken` returned by POST and send it as `X-Reference-Management-Token` when retrieving or deleting that submission. Submission and deletion also require the configured frontend `Origin`; private email is never returned by public endpoints.
 
+The public contact endpoint is:
+
+- `POST /api/v1/contact`
+
+It accepts required `name`, `email`, `message`, `scopes`, and `budget` fields plus a Turnstile token and the empty `website` honeypot. Scope is a non-empty unique array of stable allowlisted keys, while budget is one allowlisted key. The endpoint requires the configured frontend `Origin`, permits five attempts per IP per hour, rejects the same normalized email/message fingerprint for 24 hours, and returns no inquiry data. Contact messages and email addresses remain private and are not available through any public read endpoint.
+
 Admin authentication endpoints are:
 
 - `POST /api/v1/auth/login`

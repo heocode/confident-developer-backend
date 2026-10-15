@@ -60,3 +60,10 @@ export function createReferenceSubmissionRateLimiter({ limit = 5, windowMs = ONE
     'Too many reference submissions. Please try again later.',
   )
 }
+
+export function createContactSubmissionRateLimiter({ limit = 5, windowMs = ONE_HOUR } = {}) {
+  return createInteractionRateLimiter(
+    { limit, windowMs },
+    'Too many contact submissions. Please try again later.',
+  )
+}

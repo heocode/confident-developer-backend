@@ -76,6 +76,56 @@ function createHarness(existingInquiry = null, dates = [firstNow]) {
   return { service, state }
 }
 
+function submissionInput(overrides = {}) {
+  return {
+    name: 'Jordan Smith',
+    email: 'jordan@example.com',
+    message: 'I would like to discuss a portfolio application at https://example.com.',
+    scopes: ['website-web-app', 'backend-api'],
+    budget: '2500-5000',
+    turnstileToken: 'verified-contact-token',
+    website: '',
+    ...overrides,
+  }
+}
+
+function createSubmissionHarness({ duplicate = false, verificationError, existsError } = {}) {
+  const state = { events: [], saved: [], existsFilters: [], verificationCalls: [] }
+
+  function InquiryModel(values) {
+    const inquiry = inquiryDocument(values)
+    inquiry.save = async () => {
+      state.events.push('save')
+      await inquiry.validate()
+      state.saved.push(inquiry)
+      return inquiry
+    }
+    return inquiry
+  }
+
+  InquiryModel.exists = async (filter) => {
+    state.events.push('duplicate-check')
+    state.existsFilters.push(filter)
+    if (existsError) throw existsError
+    return duplicate ? { _id: inquiryId } : null
+  }
+
+  const antiSpamService = {
+    async verifyContactSubmission(input) {
+      state.events.push('verification')
+      state.verificationCalls.push(input)
+      if (verificationError) throw verificationError
+    },
+  }
+  const service = createContactService({
+    inquiryModel: InquiryModel,
+    antiSpamService,
+    now: () => firstNow,
+  })
+
+  return { service, state }
+}
+
 describe('Contact service', () => {
   it('normalizes and creates a new inquiry with a server-owned fingerprint', async () => {
     const { service, state } = createHarness()
@@ -114,6 +164,62 @@ describe('Contact service', () => {
     })
 
     assert.equal(first, second)
+  })
+
+  it('verifies, deduplicates, and stores an accepted public submission in order', async () => {
+    const { service, state } = createSubmissionHarness()
+
+    const inquiry = await service.submitInquiry(submissionInput(), { remoteIp: '203.0.113.10' })
+
+    assert.deepEqual(state.events, ['verification', 'duplicate-check', 'save'])
+    assert.deepEqual(state.verificationCalls, [
+      { token: 'verified-contact-token', remoteIp: '203.0.113.10' },
+    ])
+    assert.deepEqual(state.existsFilters, [
+      {
+        submissionFingerprint: inquiry.submissionFingerprint,
+        createdAt: { $gte: new Date(firstNow.getTime() - 24 * 60 * 60 * 1_000) },
+      },
+    ])
+    assert.equal(inquiry.status, 'new')
+    assert.equal(inquiry.message.includes('https://example.com'), true)
+    assert.equal('turnstileToken' in inquiry.toObject(), false)
+    assert.equal('website' in inquiry.toObject(), false)
+  })
+
+  it('rejects a recent duplicate after verification without saving it', async () => {
+    const { service, state } = createSubmissionHarness({ duplicate: true })
+
+    await assert.rejects(
+      service.submitInquiry(submissionInput()),
+      (error) => error.status === 409 && error.message === 'This inquiry was already submitted recently',
+    )
+
+    assert.deepEqual(state.events, ['verification', 'duplicate-check'])
+    assert.equal(state.saved.length, 0)
+  })
+
+  it('fails before database access when verification is unavailable or rejected', async () => {
+    const providerError = Object.assign(new Error('Submission verification failed'), { status: 400 })
+    const failed = createSubmissionHarness({ verificationError: providerError })
+
+    await assert.rejects(failed.service.submitInquiry(submissionInput()), providerError)
+    assert.deepEqual(failed.state.events, ['verification'])
+
+    const unavailable = createContactService({ inquiryModel: {} })
+    await assert.rejects(
+      unavailable.submitInquiry(submissionInput()),
+      (error) => error.status === 503 && error.message.includes('temporarily unavailable'),
+    )
+  })
+
+  it('propagates a database failure after successful verification without saving', async () => {
+    const databaseError = new Error('database unavailable')
+    const { service, state } = createSubmissionHarness({ existsError: databaseError })
+
+    await assert.rejects(service.submitInquiry(submissionInput()), databaseError)
+    assert.deepEqual(state.events, ['verification', 'duplicate-check'])
+    assert.equal(state.saved.length, 0)
   })
 
   it('marks a new inquiry read without replacing its original read date', async () => {

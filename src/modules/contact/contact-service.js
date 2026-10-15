@@ -3,24 +3,46 @@ import { createHash } from 'node:crypto'
 import createError from 'http-errors'
 
 import { ContactInquiry } from './contact-inquiry.js'
+import {
+  normalizeContactEmail,
+  normalizeContactMessage,
+  normalizeContactName,
+} from './contact-normalization.js'
 
-function normalizeSingleLine(value) {
-  return value.normalize('NFC').trim().replace(/\s+/gu, ' ')
-}
-
-function normalizeEmail(value) {
-  return value.normalize('NFC').trim().toLowerCase()
-}
-
-function normalizeMessage(value) {
-  return value.normalize('NFC').replace(/\r\n?/gu, '\n').trim()
-}
+const DUPLICATE_WINDOW_MS = 24 * 60 * 60 * 1_000
 
 export function createContactSubmissionFingerprint({ email, message }) {
-  return createHash('sha256').update(`${normalizeEmail(email)}\0${normalizeMessage(message)}`).digest('hex')
+  return createHash('sha256')
+    .update(`${normalizeContactEmail(email)}\0${normalizeContactMessage(message)}`)
+    .digest('hex')
 }
 
-export function createContactService({ inquiryModel = ContactInquiry, now = () => new Date() } = {}) {
+export function createContactService({
+  inquiryModel = ContactInquiry,
+  antiSpamService,
+  now = () => new Date(),
+} = {}) {
+  function normalizeSubmission(input) {
+    return {
+      name: normalizeContactName(input.name),
+      email: normalizeContactEmail(input.email),
+      message: normalizeContactMessage(input.message),
+      scopes: [...input.scopes],
+      budget: input.budget,
+    }
+  }
+
+  async function createInquiry(input) {
+    const submission = normalizeSubmission(input)
+    const inquiry = new inquiryModel({
+      ...submission,
+      submissionFingerprint: createContactSubmissionFingerprint(submission),
+    })
+
+    await inquiry.save()
+    return inquiry
+  }
+
   async function findInquiry(inquiryId) {
     const inquiry = await inquiryModel.findById(inquiryId)
     if (!inquiry) throw createError(404, 'Contact inquiry not found')
@@ -38,21 +60,24 @@ export function createContactService({ inquiryModel = ContactInquiry, now = () =
   }
 
   return {
-    async createInquiry(input) {
-      const submission = {
-        name: normalizeSingleLine(input.name),
-        email: normalizeEmail(input.email),
-        message: normalizeMessage(input.message),
-        scopes: [...input.scopes],
-        budget: input.budget,
-      }
-      const inquiry = new inquiryModel({
-        ...submission,
-        submissionFingerprint: createContactSubmissionFingerprint(submission),
+    createInquiry,
+
+    async submitInquiry(input, { remoteIp } = {}) {
+      if (!antiSpamService) throw createError(503, 'Submission verification is temporarily unavailable')
+
+      await antiSpamService.verifyContactSubmission({ token: input.turnstileToken, remoteIp })
+
+      const submission = normalizeSubmission(input)
+      const submissionFingerprint = createContactSubmissionFingerprint(submission)
+      const duplicateSince = new Date(now().getTime() - DUPLICATE_WINDOW_MS)
+      const duplicate = await inquiryModel.exists({
+        submissionFingerprint,
+        createdAt: { $gte: duplicateSince },
       })
 
-      await inquiry.save()
-      return inquiry
+      if (duplicate) throw createError(409, 'This inquiry was already submitted recently')
+
+      return createInquiry(submission)
     },
 
     async markInquiryRead(inquiryId) {

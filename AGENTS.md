@@ -45,7 +45,7 @@ The React, TypeScript, and Vite frontend lives in a separate repository. Do not 
 - `src/modules`: production feature modules. Keep feature-specific models, services, controllers, routes, validation, and serializers together.
 - `src/modules/anti-spam`: provider-neutral submission verification with the Cloudflare Turnstile adapter.
 - `src/modules/auth`: administrator identity, opaque sessions, cookie policy, authentication service and HTTP delivery, login validation, safe admin serialization, and session middleware.
-- `src/modules/contact`: private portfolio contact inquiries, stable form option keys, server-owned inbox lifecycle state, and duplicate-submission fingerprints. Public and admin HTTP delivery are added only when their contracts are implemented.
+- `src/modules/contact`: private portfolio contact inquiries, stable form option keys, server-owned inbox lifecycle state, duplicate-submission fingerprints, and protected public submission delivery. Admin HTTP delivery is added only when its contract is implemented.
 - `src/modules/github`: cached GitHub portfolio statistics, the provider-neutral refresh service, GitHub REST adapter, public snapshot delivery, and protected manual refresh.
 - `src/modules/projects`: the production Projects module. Its shared `PortfolioProject` model is at the module root and protected write behavior is under `admin`.
 - `src/modules/services`: the production Services module. Its shared `PortfolioService` model is isolated from coursework services, with protected writes under `admin` and public reads under `public`.
@@ -215,12 +215,14 @@ Current Reference decisions:
 
 Current Contact inquiry decisions:
 
-- `ContactInquiry` uses the explicit `contact_inquiries` collection and remains separate from coursework users, references, and authentication identities. Its HTTP delivery is intentionally not mounted until the public submission and protected inbox contracts are implemented.
+- `ContactInquiry` uses the explicit `contact_inquiries` collection and remains separate from coursework users, references, and authentication identities. Public submission is mounted at `POST /api/v1/contact`; no public inquiry read endpoint exists.
 - Every inquiry requires a normalized name, private normalized email, private message, one or more unique allowlisted scope keys, and one allowlisted budget key. Scope keys are `product-design`, `mobile-app`, `website-web-app`, `backend-api`, `full-product`, and `other`; budget keys are `under-500`, `500-1000`, `1000-2500`, `2500-5000`, `over-5000`, and `not-sure`.
 - Inbox states are `new`, `read`, `replied`, and `archived`. Server-owned `readAt`, `repliedAt`, and `archivedAt` dates must agree with the current state. Archiving preserves earlier dates, and restoring derives `replied`, `read`, or `new` from that retained history.
 - Contact lifecycle operations are idempotent and use conditional atomic document updates. A new inquiry receives a server-generated SHA-256 fingerprint of its normalized email and message; the fingerprint is private, is not unique, and prepares the later 24-hour duplicate-submission check without persisting a raw IP address.
 - Email, message, and submission fingerprint are excluded from Mongoose queries by default. Future admin detail delivery must explicitly select and serialize the private fields; no public read endpoint will expose an inquiry.
-- Public submission validation, trusted-Origin enforcement, rate limiting, Turnstile, honeypot handling, duplicate rejection, admin inbox HTTP delivery, notification email, and administrator replies remain subsequent implementation stages.
+- Public submission bodies are strict and normalized, require every visible form field, accept links in the private message, require one or more unique scope keys plus one budget key, and include a `contact_submit` Turnstile token with the empty `website` honeypot. The route requires an exact trusted `Origin`, returns `private, no-store`, permits five attempts per IP per hour, and returns no inquiry data.
+- Turnstile verification completes before any database access. Identical normalized email/message fingerprints are rejected for 24 hours after verification; accepted inquiries always start as `new`. The current in-memory contact limiter must use a shared store before horizontal scaling.
+- Admin inbox HTTP delivery, notification email, administrator replies, and delivery retry remain subsequent implementation stages.
 
 Current Site Profile and resume decisions:
 

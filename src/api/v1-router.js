@@ -7,6 +7,7 @@ import { validateRequest } from '../middleware/validate-request.js'
 import { serializeAdmin } from '../modules/auth/admin-serializer.js'
 import { createAuthRouter } from '../modules/auth/auth-routes.js'
 import { requireAdminSession } from '../modules/auth/require-admin-session.js'
+import { createPublicContactRouter } from '../modules/contact/public/public-contact-routes.js'
 import { createAdminGitHubRouter } from '../modules/github/admin/admin-github-routes.js'
 import { createPublicGitHubRouter } from '../modules/github/public/public-github-routes.js'
 import { createAdminMediaRouter } from '../modules/media/admin/admin-media-routes.js'
@@ -28,6 +29,7 @@ export function createV1Router({
   profileService,
   profilePostService,
   referenceService,
+  contactService,
   projectService,
   publicProjectService,
   serviceService,
@@ -37,6 +39,7 @@ export function createV1Router({
   profileLikeRateLimitOptions,
   profileViewRateLimitOptions,
   referenceSubmissionRateLimitOptions,
+  contactSubmissionRateLimitOptions,
 }) {
   const router = Router()
 
@@ -51,6 +54,14 @@ export function createV1Router({
   })
 
   router.use('/auth', createAuthRouter({ authService, environment, loginRateLimitOptions }))
+  router.use(
+    '/contact',
+    createPublicContactRouter({
+      contactService,
+      environment,
+      submissionRateLimitOptions: contactSubmissionRateLimitOptions,
+    }),
+  )
   router.use('/github-summary', createPublicGitHubRouter({ githubService }))
   router.use('/profile', createPublicProfileRouter({ profileService }))
   router.use(
