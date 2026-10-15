@@ -45,6 +45,7 @@ The React, TypeScript, and Vite frontend lives in a separate repository. Do not 
 - `src/modules`: production feature modules. Keep feature-specific models, services, controllers, routes, validation, and serializers together.
 - `src/modules/anti-spam`: provider-neutral submission verification with the Cloudflare Turnstile adapter.
 - `src/modules/auth`: administrator identity, opaque sessions, cookie policy, authentication service and HTTP delivery, login validation, safe admin serialization, and session middleware.
+- `src/modules/contact`: private portfolio contact inquiries, stable form option keys, server-owned inbox lifecycle state, and duplicate-submission fingerprints. Public and admin HTTP delivery are added only when their contracts are implemented.
 - `src/modules/github`: cached GitHub portfolio statistics, the provider-neutral refresh service, GitHub REST adapter, public snapshot delivery, and protected manual refresh.
 - `src/modules/projects`: the production Projects module. Its shared `PortfolioProject` model is at the module root and protected write behavior is under `admin`.
 - `src/modules/services`: the production Services module. Its shared `PortfolioService` model is isolated from coursework services, with protected writes under `admin` and public reads under `public`.
@@ -211,6 +212,15 @@ Current Reference decisions:
 - A successful submission returns a 256-bit management token exactly once. Only its SHA-256 hash is stored, and subsequent ownership calls supply the raw value through `X-Reference-Management-Token`. Missing, malformed, or incorrect ownership credentials are indistinguishable from a missing record. Raw IP addresses are never persisted.
 - `ReferenceSectionSettings` uses the singleton key `home` in `reference_section_settings` and owns the administrator-editable empty-state message plus its server-owned content date. Protected settings delivery is available at `GET` and `PUT /api/v1/admin/references/settings`; identical text is a no-op.
 - `GET /api/v1/references` returns the composed profile-backed `emptyState` only when the total number of approved references is zero. Pending and rejected submissions do not suppress it, an out-of-range page cannot activate it while approved content exists, and incomplete settings or profile identity produce `emptyState: null` without failing the list.
+
+Current Contact inquiry decisions:
+
+- `ContactInquiry` uses the explicit `contact_inquiries` collection and remains separate from coursework users, references, and authentication identities. Its HTTP delivery is intentionally not mounted until the public submission and protected inbox contracts are implemented.
+- Every inquiry requires a normalized name, private normalized email, private message, one or more unique allowlisted scope keys, and one allowlisted budget key. Scope keys are `product-design`, `mobile-app`, `website-web-app`, `backend-api`, `full-product`, and `other`; budget keys are `under-500`, `500-1000`, `1000-2500`, `2500-5000`, `over-5000`, and `not-sure`.
+- Inbox states are `new`, `read`, `replied`, and `archived`. Server-owned `readAt`, `repliedAt`, and `archivedAt` dates must agree with the current state. Archiving preserves earlier dates, and restoring derives `replied`, `read`, or `new` from that retained history.
+- Contact lifecycle operations are idempotent and use conditional atomic document updates. A new inquiry receives a server-generated SHA-256 fingerprint of its normalized email and message; the fingerprint is private, is not unique, and prepares the later 24-hour duplicate-submission check without persisting a raw IP address.
+- Email, message, and submission fingerprint are excluded from Mongoose queries by default. Future admin detail delivery must explicitly select and serialize the private fields; no public read endpoint will expose an inquiry.
+- Public submission validation, trusted-Origin enforcement, rate limiting, Turnstile, honeypot handling, duplicate rejection, admin inbox HTTP delivery, notification email, and administrator replies remain subsequent implementation stages.
 
 Current Site Profile and resume decisions:
 

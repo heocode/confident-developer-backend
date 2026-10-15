@@ -42,6 +42,8 @@ The Media module is located at `src/modules/media`. Shared asset persistence and
 
 The Authentication module is located at `src/modules/auth`. It owns administrator and session persistence, authentication business logic, cookie policy, login validation, safe admin serialization, authentication routes, and the middleware used to protect the admin API. Cross-cutting rate limiting, trusted-origin checks, request validation, no-store policy, and global error handling remain shared middleware.
 
+The Contact module is located at `src/modules/contact`. Its implemented domain foundation owns private contact-inquiry persistence, stable scope and budget keys, duplicate-submission fingerprints, and server-owned inbox lifecycle transitions. Public submission, protected inbox delivery, email notifications, and administrator replies remain staged additions and are not mounted until their respective contracts are complete.
+
 The frozen Assignment 2 compatibility layer is isolated under `src/coursework`, retaining its internal models/controllers/routes organization and shared CRUD factories. It is mounted only when `ENABLE_COURSEWORK_API=true`. The production composition root lives at `src/api/v1-router.js` and connects feature-owned routers without owning their behavior. Automated tests mirror configuration, coursework, and production module boundaries under `test`.
 
 ## Deployment Topology
@@ -360,7 +362,13 @@ The submission response returns a random 256-bit management token once, while th
 
 ### ContactInquiry
 
-Contact inquiries store name, private email, message, selected scope, budget band, status, and limited anti-abuse metadata. They are admin-only records. Status changes support an inbox workflow without turning inquiries into users.
+Contact inquiries use the explicit `contact_inquiries` collection and remain separate from coursework users, references, and administrator identities. Every inquiry stores a normalized name, private normalized email, private message, one or more unique allowlisted scope keys, one allowlisted budget key, server-owned lifecycle state, and a private duplicate-submission fingerprint. Email, message, and fingerprint are excluded from queries by default.
+
+Scope keys are `product-design`, `mobile-app`, `website-web-app`, `backend-api`, `full-product`, and `other`. Budget keys are `under-500`, `500-1000`, `1000-2500`, `2500-5000`, `over-5000`, and `not-sure`; display labels and currency formatting remain frontend-owned.
+
+Inbox states are `new`, `read`, `replied`, and `archived`. `readAt`, `repliedAt`, and `archivedAt` are server-owned and validated against the current state. Archiving retains prior read and reply dates, while restoring derives the active state from that history. Lifecycle operations are idempotent and use conditional atomic document updates.
+
+New documents receive a non-unique SHA-256 fingerprint of normalized email and message. It supports the planned time-bounded duplicate check without persisting a raw IP address or permanently preventing a person from sending the same inquiry again. Contact inquiries are admin-only records; public reading is not planned, and public submission plus protected inbox HTTP delivery remain unmounted until their later implementation stages.
 
 ### ProfilePost
 
