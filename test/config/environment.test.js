@@ -17,6 +17,7 @@ describe('environment configuration', () => {
       cloudinary: null,
       github: null,
       turnstile: null,
+      email: null,
     })
   })
 
@@ -115,6 +116,39 @@ describe('environment configuration', () => {
           TURNSTILE_SECRET_KEY: testSecret,
         }),
       /test credentials cannot be used in production/,
+    )
+  })
+
+  it('loads email delivery settings only as a complete valid group', () => {
+    const environment = loadEnvironment({
+      RESEND_API_KEY: 'resend-secret',
+      RESEND_FROM_EMAIL: 'CONTACT@EXAMPLE.COM',
+      CONTACT_NOTIFICATION_TO_EMAIL: 'OWNER@EXAMPLE.COM',
+    })
+
+    assert.deepEqual(environment.email, {
+      apiKey: 'resend-secret',
+      fromEmail: 'contact@example.com',
+      notificationToEmail: 'owner@example.com',
+    })
+    assert.throws(() => loadEnvironment({ RESEND_API_KEY: 'resend-secret' }), /configured together/)
+    assert.throws(
+      () =>
+        loadEnvironment({
+          RESEND_API_KEY: 'resend-secret',
+          RESEND_FROM_EMAIL: 'not-an-email',
+          CONTACT_NOTIFICATION_TO_EMAIL: 'owner@example.com',
+        }),
+      /RESEND_FROM_EMAIL must be a valid email address/,
+    )
+    assert.throws(
+      () =>
+        loadEnvironment({
+          RESEND_API_KEY: 'resend-secret',
+          RESEND_FROM_EMAIL: 'contact@example.com',
+          CONTACT_NOTIFICATION_TO_EMAIL: 'not-an-email',
+        }),
+      /CONTACT_NOTIFICATION_TO_EMAIL must be a valid email address/,
     )
   })
 

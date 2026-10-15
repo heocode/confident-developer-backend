@@ -216,4 +216,87 @@ describe('Email delivery service', () => {
       },
     ])
   })
+
+  it('atomically claims due or expired work with a bounded lease and fencing attempt', async () => {
+    const operations = []
+    const claimed = { _id: sourceId, status: 'processing', attemptCount: 2 }
+    const deliveryModel = {
+      async findOneAndUpdate(filter, update, options) {
+        operations.push({ filter, update, options })
+        return claimed
+      },
+    }
+    const service = createEmailDeliveryService({ deliveryModel, now: () => firstNow })
+
+    assert.equal(await service.claimNextDelivery({ leaseMs: 60_000 }), claimed)
+    assert.deepEqual(operations, [
+      {
+        filter: {
+          kind: 'contact-owner-notification',
+          $or: [
+            { status: 'pending', nextAttemptAt: { $lte: firstNow } },
+            { status: 'processing', leaseUntil: { $lte: firstNow } },
+          ],
+        },
+        update: {
+          $set: {
+            status: 'processing',
+            lastAttemptAt: firstNow,
+            leaseUntil: new Date('2026-10-15T13:01:00.000Z'),
+          },
+          $inc: { attemptCount: 1 },
+          $unset: {
+            nextAttemptAt: 1,
+            acceptedAt: 1,
+            failedAt: 1,
+            providerMessageId: 1,
+          },
+        },
+        options: {
+          sort: { createdAt: 1, _id: 1 },
+          returnDocument: 'after',
+        },
+      },
+    ])
+  })
+
+  it('finalizes work only when the processing attempt still owns the lease', async () => {
+    const operations = []
+    const deliveryModel = {
+      async findOneAndUpdate(filter, update, options) {
+        operations.push({ filter, update, options })
+        return { _id: sourceId }
+      },
+    }
+    const service = createEmailDeliveryService({ deliveryModel, now: () => secondNow })
+
+    await service.markDeliveryAccepted(sourceId, 2, 'provider-id')
+    await service.rescheduleDelivery(sourceId, 3, 'timeout', firstNow)
+    await service.markDeliveryFailed(sourceId, 4, 'provider-rejected')
+
+    assert.deepEqual(
+      operations.map(({ filter }) => filter),
+      [
+        { _id: sourceId, status: 'processing', attemptCount: 2 },
+        { _id: sourceId, status: 'processing', attemptCount: 3 },
+        { _id: sourceId, status: 'processing', attemptCount: 4 },
+      ],
+    )
+    assert.deepEqual(operations[0].update.$set, {
+      status: 'accepted',
+      acceptedAt: secondNow,
+      providerMessageId: 'provider-id',
+    })
+    assert.deepEqual(operations[1].update.$set, {
+      status: 'pending',
+      nextAttemptAt: firstNow,
+      lastFailureCode: 'timeout',
+    })
+    assert.deepEqual(operations[2].update.$set, {
+      status: 'failed',
+      failedAt: secondNow,
+      lastFailureCode: 'provider-rejected',
+    })
+    assert.ok(operations.every(({ options }) => options.returnDocument === 'after'))
+  })
 })

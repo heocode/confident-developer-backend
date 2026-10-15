@@ -42,9 +42,9 @@ The Media module is located at `src/modules/media`. Shared asset persistence and
 
 The Authentication module is located at `src/modules/auth`. It owns administrator and session persistence, authentication business logic, cookie policy, login validation, safe admin serialization, authentication routes, and the middleware used to protect the admin API. Cross-cutting rate limiting, trusted-origin checks, request validation, no-store policy, and global error handling remain shared middleware.
 
-The Contact module is located at `src/modules/contact`. It owns private contact-inquiry persistence, stable scope and budget keys, duplicate-submission fingerprints, server-owned inbox lifecycle transitions, protected public submission delivery, and authenticated inbox management. Email notifications and administrator replies remain staged additions and are not mounted until their respective contracts are complete.
+The Contact module is located at `src/modules/contact`. It owns private contact-inquiry persistence, stable scope and budget keys, duplicate-submission fingerprints, server-owned inbox lifecycle transitions, protected public submission delivery, authenticated inbox management, and the contact-specific owner-notification handler. Administrator replies remain a staged addition.
 
-The Email module is located at `src/modules/email`. It currently owns provider-neutral durable delivery envelopes and their outbox persistence contract. Provider adapters, dispatch execution, and runtime scheduling remain unimplemented until the next stage.
+The Email module is located at `src/modules/email`. It owns provider-neutral durable delivery envelopes, atomic dispatch claims, bounded retry behavior, the in-process worker lifecycle, safe notification rendering, and provider adapters. Resend is isolated behind the provider interface.
 
 The frozen Assignment 2 compatibility layer is isolated under `src/coursework`, retaining its internal models/controllers/routes organization and shared CRUD factories. It is mounted only when `ENABLE_COURSEWORK_API=true`. The production composition root lives at `src/api/v1-router.js` and connects feature-owned routers without owning their behavior. Automated tests mirror configuration, coursework, and production module boundaries under `test`.
 
@@ -386,9 +386,13 @@ New documents receive a non-unique SHA-256 fingerprint of normalized email and m
 
 `EmailDelivery` uses the explicit `email_deliveries` collection as the durable provider-neutral outbox. The current `contact-owner-notification` kind stores an immutable ContactInquiry source ID and operational lifecycle metadata only; it does not duplicate contact identity, message content, scope, budget, recipient addresses, or rendered email bodies.
 
-Delivery states are `pending`, `processing`, `accepted`, and `failed`. Attempt counts, scheduling dates, leases, terminal dates, allowlisted failure codes, and the non-selected provider message ID are validated against the state. A unique `kind` plus `sourceId` index permits only one owner notification per inquiry, while separate indexes prepare due-work claims and expired-lease recovery. No worker or provider is active yet, so this stage creates only immediately scheduled `pending` records.
+Delivery states are `pending`, `processing`, `accepted`, and `failed`. Attempt counts, scheduling dates, leases, terminal dates, allowlisted failure codes, and the non-selected provider message ID are validated against the state. A unique `kind` plus `sourceId` index permits only one owner notification per inquiry, while separate indexes support due-work claims and expired-lease recovery.
 
-Contact submission creates the inquiry and outbox envelope in one Atlas transaction. Archived-only hard deletion removes both in one transaction. Existing inquiries are deliberately not backfilled. The future dispatcher will derive its stable provider idempotency key from the immutable EmailDelivery ID and resolve private source content only when processing the allowlisted delivery kind.
+Contact submission creates the inquiry and outbox envelope in one Atlas transaction. Archived-only hard deletion removes both in one transaction. Existing inquiries are deliberately not backfilled. The in-process worker atomically claims due pending or lease-expired processing work, increments the attempt count as a fencing token, and resolves private source content only after a successful claim. A stale worker can no longer finalize a reclaimed attempt.
+
+The contact handler generates deterministic plain-text and escaped HTML content from immutable inquiry fields only at dispatch time. Owner-facing submission dates use an explicit English `America/Toronto` long-date, short-time representation and zone abbreviation, while HTML retains the canonical ISO instant in a `time` element. Resend receives a stable `contact-owner-notification/<delivery-id>` idempotency key. Successful provider acceptance records the private provider message ID and `acceptedAt`; this state does not claim final mailbox delivery. Timeout, rate-limit, network, and provider availability failures use bounded retries at one minute, five minutes, fifteen minutes, and one hour. Permanent rejection, a missing source, or five exhausted attempts becomes `failed`. Logs contain delivery identity and allowlisted operational codes but no contact content, recipient email, provider response body, or credential.
+
+`RESEND_API_KEY`, `RESEND_FROM_EMAIL`, and `CONTACT_NOTIFICATION_TO_EMAIL` are an optional complete configuration group. Missing configuration leaves the application available and durable jobs pending with the worker disabled; partial or malformed configuration prevents startup. The worker starts after MongoDB and HTTP startup, processes sequentially within one process, supports multiple application instances through atomic claims, and drains its active bounded request during graceful shutdown.
 
 ### ProfilePost
 
@@ -466,7 +470,7 @@ Mongoose validation remains a persistence safeguard, not the only API validation
 - Render hosts the backend; its direct health endpoint remains available for platform monitoring.
 - Cloudinary stores media binaries; MongoDB stores their metadata and relationships.
 - GitHub is an eventually consistent enrichment source; stale cached data remains usable during GitHub outages.
-- Email delivery, if later added for contact notifications or reference verification, must be hidden behind a service interface and must not block persistence when asynchronous delivery is appropriate.
+- Resend contact notification delivery is hidden behind a provider interface and runs asynchronously from the MongoDB outbox; provider outages never roll back an already accepted inquiry.
 
 External failures return safe API errors and retain enough non-sensitive diagnostic context in server logs. Retriable work must be idempotent.
 

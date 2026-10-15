@@ -1,6 +1,6 @@
 import { EmailDelivery } from './email-delivery.js'
-
-const CONTACT_OWNER_NOTIFICATION_KIND = 'contact-owner-notification'
+import { contactOwnerNotificationKind } from './email-delivery-values.js'
+const DEFAULT_LEASE_MS = 30_000
 
 function useSession(query, session) {
   return session && typeof query?.session === 'function' ? query.session(session) : query
@@ -13,7 +13,7 @@ export function createEmailDeliveryService({
   return {
     async createContactOwnerNotification(sourceId, { session, nextAttemptAt = now() } = {}) {
       const delivery = new deliveryModel({
-        kind: CONTACT_OWNER_NOTIFICATION_KIND,
+        kind: contactOwnerNotificationKind,
         sourceId,
         status: 'pending',
         attemptCount: 0,
@@ -29,7 +29,7 @@ export function createEmailDeliveryService({
 
       return useSession(
         deliveryModel.find({
-          kind: CONTACT_OWNER_NOTIFICATION_KIND,
+          kind: contactOwnerNotificationKind,
           sourceId: { $in: sourceIds },
         }),
         session,
@@ -38,15 +38,108 @@ export function createEmailDeliveryService({
 
     async getContactOwnerNotification(sourceId, { session } = {}) {
       return useSession(
-        deliveryModel.findOne({ kind: CONTACT_OWNER_NOTIFICATION_KIND, sourceId }),
+        deliveryModel.findOne({ kind: contactOwnerNotificationKind, sourceId }),
         session,
       )
     },
 
     async deleteContactDeliveries(sourceId, { session } = {}) {
       return deliveryModel.deleteMany(
-        { kind: CONTACT_OWNER_NOTIFICATION_KIND, sourceId },
+        { kind: contactOwnerNotificationKind, sourceId },
         { session },
+      )
+    },
+
+    async claimNextDelivery({ leaseMs = DEFAULT_LEASE_MS } = {}) {
+      const claimedAt = now()
+      const leaseUntil = new Date(claimedAt.getTime() + leaseMs)
+
+      return deliveryModel.findOneAndUpdate(
+        {
+          kind: contactOwnerNotificationKind,
+          $or: [
+            { status: 'pending', nextAttemptAt: { $lte: claimedAt } },
+            { status: 'processing', leaseUntil: { $lte: claimedAt } },
+          ],
+        },
+        {
+          $set: {
+            status: 'processing',
+            lastAttemptAt: claimedAt,
+            leaseUntil,
+          },
+          $inc: { attemptCount: 1 },
+          $unset: {
+            nextAttemptAt: 1,
+            acceptedAt: 1,
+            failedAt: 1,
+            providerMessageId: 1,
+          },
+        },
+        {
+          sort: { createdAt: 1, _id: 1 },
+          returnDocument: 'after',
+        },
+      )
+    },
+
+    async markDeliveryAccepted(deliveryId, attemptCount, providerMessageId) {
+      return deliveryModel.findOneAndUpdate(
+        { _id: deliveryId, status: 'processing', attemptCount },
+        {
+          $set: {
+            status: 'accepted',
+            acceptedAt: now(),
+            providerMessageId,
+          },
+          $unset: {
+            leaseUntil: 1,
+            nextAttemptAt: 1,
+            failedAt: 1,
+            lastFailureCode: 1,
+          },
+        },
+        { returnDocument: 'after' },
+      )
+    },
+
+    async rescheduleDelivery(deliveryId, attemptCount, failureCode, nextAttemptAt) {
+      return deliveryModel.findOneAndUpdate(
+        { _id: deliveryId, status: 'processing', attemptCount },
+        {
+          $set: {
+            status: 'pending',
+            nextAttemptAt,
+            lastFailureCode: failureCode,
+          },
+          $unset: {
+            leaseUntil: 1,
+            acceptedAt: 1,
+            failedAt: 1,
+            providerMessageId: 1,
+          },
+        },
+        { returnDocument: 'after' },
+      )
+    },
+
+    async markDeliveryFailed(deliveryId, attemptCount, failureCode) {
+      return deliveryModel.findOneAndUpdate(
+        { _id: deliveryId, status: 'processing', attemptCount },
+        {
+          $set: {
+            status: 'failed',
+            failedAt: now(),
+            lastFailureCode: failureCode,
+          },
+          $unset: {
+            leaseUntil: 1,
+            nextAttemptAt: 1,
+            acceptedAt: 1,
+            providerMessageId: 1,
+          },
+        },
+        { returnDocument: 'after' },
       )
     },
   }

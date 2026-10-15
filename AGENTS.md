@@ -46,7 +46,7 @@ The React, TypeScript, and Vite frontend lives in a separate repository. Do not 
 - `src/modules/anti-spam`: provider-neutral submission verification with the Cloudflare Turnstile adapter.
 - `src/modules/auth`: administrator identity, opaque sessions, cookie policy, authentication service and HTTP delivery, login validation, safe admin serialization, and session middleware.
 - `src/modules/contact`: private portfolio contact inquiries, stable form option keys, server-owned inbox lifecycle state, duplicate-submission fingerprints, protected public submission delivery, and authenticated inbox management.
-- `src/modules/email`: provider-neutral durable email delivery envelopes and outbox persistence. Provider adapters and dispatch execution are added only when their contracts are implemented.
+- `src/modules/email`: provider-neutral durable email delivery envelopes, atomic dispatch and retry behavior, notification rendering, the in-process worker lifecycle, and provider adapters.
 - `src/modules/github`: cached GitHub portfolio statistics, the provider-neutral refresh service, GitHub REST adapter, public snapshot delivery, and protected manual refresh.
 - `src/modules/projects`: the production Projects module. Its shared `PortfolioProject` model is at the module root and protected write behavior is under `admin`.
 - `src/modules/services`: the production Services module. Its shared `PortfolioService` model is isolated from coursework services, with protected writes under `admin` and public reads under `public`.
@@ -228,13 +228,17 @@ Current Contact inquiry decisions:
 - Every newly accepted public inquiry and its `contact-owner-notification` EmailDelivery are created in one Atlas transaction. Existing inquiries are not backfilled and expose `ownerNotification: null`; new jobs begin `pending` and expose only allowlisted operational state through the admin inbox.
 - `EmailDelivery` stores only an immutable kind and source ID plus delivery lifecycle metadata; it never duplicates the contact name, email, message, scope, budget, or rendered email content. One owner-notification job per inquiry is enforced by a unique compound index.
 - Admin inquiry lists batch-load delivery envelopes rather than issuing one query per inquiry. Hard-deleting an archived inquiry transactionally deletes its related delivery envelope; Contact lifecycle actions do not change delivery state.
-- The outbox currently persists tasks only. Notification dispatch, provider configuration, administrator replies, and delivery retry remain subsequent implementation stages.
+- A configured in-process worker sends owner notifications asynchronously through the provider-neutral email adapter. Administrator replies remain a subsequent implementation stage.
 
 Current email outbox decisions:
 
 - `EmailDelivery` uses the explicit `email_deliveries` collection. Its states are `pending`, `processing`, `accepted`, and `failed`; lifecycle dates, attempt counts, leases, failure codes, and private provider message identity must agree with the current state.
-- The only current delivery kind is `contact-owner-notification`. The source is identified by immutable ObjectId without a Mongoose population dependency; future dispatch resolves the source according to the allowlisted kind.
-- New contact jobs are scheduled immediately with `attemptCount: 0`. Dispatcher-ready indexes cover due pending work and expired processing leases, but no dispatcher, timer, provider call, or email environment configuration exists yet.
+- The only current delivery kind is `contact-owner-notification`. The source is identified by immutable ObjectId without a Mongoose population dependency; the contact-owned handler explicitly loads private source content only after the worker claims the job.
+- New contact jobs are scheduled immediately with `attemptCount: 0`. The worker atomically claims due pending work and expired processing leases, increments `attemptCount` as a fencing token, and permits only the owning attempt to finalize the delivery.
+- The worker is sequential inside each process and safe across multiple processes. It uses a 30-second lease, a 10-second provider timeout, at most five attempts, and retry delays of one minute, five minutes, fifteen minutes, and one hour. Resend `Retry-After` may lengthen a delay up to four hours.
+- `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, and `CONTACT_NOTIFICATION_TO_EMAIL` form an optional complete configuration group. Missing configuration disables dispatch without preventing startup or losing pending jobs; partial or invalid configuration prevents startup. The Resend adapter uses Node's bounded fetch and never exposes or logs provider credentials or response bodies.
+- Contact notification content is generated from the source at dispatch time in deterministic text and escaped HTML forms. Owner-facing submission dates use an explicit English `America/Toronto` long-date, short-time representation with the zone abbreviation; HTML also retains the canonical ISO instant in a `time` element. Every provider call uses `contact-owner-notification/<delivery-id>` as its stable Resend idempotency key. `accepted` records provider acceptance, not final mailbox delivery; delivery webhooks are not implemented.
+- Retryable timeout, network, `429`, and `5xx` failures return to `pending`; provider rejection, missing source, missing handler, or exhausted attempts become `failed`. The server starts the worker only after listening and waits for an active bounded operation during graceful shutdown.
 - Provider message IDs are excluded from queries by default. Delivery IDs, source IDs, leases, provider identities, and scheduling internals are never serialized through the Contact admin API.
 
 Current Site Profile and resume decisions:

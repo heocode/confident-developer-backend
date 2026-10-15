@@ -18,6 +18,9 @@ const rawEnvironmentSchema = z
     GITHUB_USERNAME: z.string().optional(),
     GITHUB_TOKEN: z.string().optional(),
     TURNSTILE_SECRET_KEY: z.string().optional(),
+    RESEND_API_KEY: z.string().optional(),
+    RESEND_FROM_EMAIL: z.string().optional(),
+    CONTACT_NOTIFICATION_TO_EMAIL: z.string().optional(),
   })
   .passthrough()
 
@@ -131,6 +134,38 @@ function parseTurnstileConfiguration(raw, clientOrigins) {
   })
 }
 
+function parseEmailConfiguration(raw) {
+  const values = [
+    raw.RESEND_API_KEY,
+    raw.RESEND_FROM_EMAIL,
+    raw.CONTACT_NOTIFICATION_TO_EMAIL,
+  ].map((value) => value?.trim())
+  const configuredValues = values.filter(Boolean)
+
+  if (configuredValues.length === 0) return null
+  if (configuredValues.length !== values.length) {
+    throw new Error(
+      'RESEND_API_KEY, RESEND_FROM_EMAIL, and CONTACT_NOTIFICATION_TO_EMAIL must be configured together',
+    )
+  }
+
+  const [, fromEmail, notificationToEmail] = values
+  const emailSchema = z.string().email().max(254)
+
+  if (!emailSchema.safeParse(fromEmail).success) {
+    throw new Error('RESEND_FROM_EMAIL must be a valid email address')
+  }
+  if (!emailSchema.safeParse(notificationToEmail).success) {
+    throw new Error('CONTACT_NOTIFICATION_TO_EMAIL must be a valid email address')
+  }
+
+  return Object.freeze({
+    apiKey: values[0],
+    fromEmail: fromEmail.toLowerCase(),
+    notificationToEmail: notificationToEmail.toLowerCase(),
+  })
+}
+
 export function getPort(value) {
   if (value === undefined || value === '') {
     return DEFAULT_PORT
@@ -167,5 +202,6 @@ export function loadEnvironment(source = process.env) {
     cloudinary: parseCloudinaryConfiguration(raw),
     github: parseGitHubConfiguration(raw),
     turnstile: parseTurnstileConfiguration(raw, clientOrigins),
+    email: parseEmailConfiguration(raw),
   })
 }

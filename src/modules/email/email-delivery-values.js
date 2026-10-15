@@ -1,4 +1,6 @@
-export const emailDeliveryKinds = Object.freeze(['contact-owner-notification'])
+export const contactOwnerNotificationKind = 'contact-owner-notification'
+
+export const emailDeliveryKinds = Object.freeze([contactOwnerNotificationKind])
 
 export const emailDeliveryStatuses = Object.freeze([
   'pending',

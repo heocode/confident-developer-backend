@@ -21,7 +21,8 @@ REST API for the Confident Developer portfolio and COMP229 Assignment 2.
 6. Add all three `CLOUDINARY_*` values when testing media uploads; never commit them.
 7. Set `GITHUB_USERNAME` to the public portfolio account. `GITHUB_TOKEN` is optional and must remain secret.
 8. Set `TURNSTILE_SECRET_KEY` when testing reference submissions. Cloudflare's official test secret is suitable locally but is rejected in production.
-9. Start the development server with `npm run dev`.
+9. Set `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, and `CONTACT_NOTIFICATION_TO_EMAIL` together to enable contact email delivery. The sender must belong to a domain accepted by Resend.
+10. Start the development server with `npm run dev`.
 
 The API listens on port `3000` by default. Check it at `GET /api/health`.
 
@@ -126,7 +127,7 @@ Authenticated contact inbox endpoints are:
 - `PATCH /api/v1/admin/inquiries/:id/status`
 - `DELETE /api/v1/admin/inquiries/:id`
 
-The inbox list supports strict page-based pagination and an optional `new`, `read`, `replied`, or `archived` status filter. Opening detail is read-only; the frontend explicitly sends the `read` action when an inquiry is actually opened. Status actions also support idempotent `archive` and `restore`, while permanent deletion is allowed only after archiving. Email and message are available only through these authenticated representations, and the submission fingerprint is never returned. Admin representations include the allowlisted owner-notification outbox state; historical inquiries without a job return `ownerNotification: null`. No dispatcher or email provider is active yet, so newly created tasks remain `pending` until the next implementation stage.
+The inbox list supports strict page-based pagination and an optional `new`, `read`, `replied`, or `archived` status filter. Opening detail is read-only; the frontend explicitly sends the `read` action when an inquiry is actually opened. Status actions also support idempotent `archive` and `restore`, while permanent deletion is allowed only after archiving. Email and message are available only through these authenticated representations, and the submission fingerprint is never returned. Admin representations include the allowlisted owner-notification state; historical inquiries without a job return `ownerNotification: null`. When the complete email configuration is present, an in-process worker sends new-inquiry notifications through Resend and advances jobs through `processing` to `accepted`, retryable `pending`, or terminal `failed`. Without configuration, the worker stays disabled and durable jobs remain pending.
 
 Authenticated project management endpoints are:
 
