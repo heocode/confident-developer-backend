@@ -119,6 +119,15 @@ Admin authentication endpoints are:
 
 There is no public signup. Run `npm run admin:create` in an interactive local terminal to provision the single owner account against the configured Atlas database. Never pass its password through command arguments or environment variables.
 
+Authenticated contact inbox endpoints are:
+
+- `GET /api/v1/admin/inquiries`
+- `GET /api/v1/admin/inquiries/:id`
+- `PATCH /api/v1/admin/inquiries/:id/status`
+- `DELETE /api/v1/admin/inquiries/:id`
+
+The inbox list supports strict page-based pagination and an optional `new`, `read`, `replied`, or `archived` status filter. Opening detail is read-only; the frontend explicitly sends the `read` action when an inquiry is actually opened. Status actions also support idempotent `archive` and `restore`, while permanent deletion is allowed only after archiving. Email and message are available only through these authenticated representations, and the submission fingerprint is never returned.
+
 Authenticated project management endpoints are:
 
 - `POST /api/v1/admin/projects`

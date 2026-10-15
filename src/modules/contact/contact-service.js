@@ -11,6 +11,10 @@ import {
 
 const DUPLICATE_WINDOW_MS = 24 * 60 * 60 * 1_000
 
+function applySelection(query, selection) {
+  return typeof query?.select === 'function' ? query.select(selection) : query
+}
+
 export function createContactSubmissionFingerprint({ email, message }) {
   return createHash('sha256')
     .update(`${normalizeContactEmail(email)}\0${normalizeContactMessage(message)}`)
@@ -43,20 +47,23 @@ export function createContactService({
     return inquiry
   }
 
-  async function findInquiry(inquiryId) {
-    const inquiry = await inquiryModel.findById(inquiryId)
+  async function findAdminInquiry(inquiryId) {
+    const inquiry = await applySelection(inquiryModel.findById(inquiryId), '+email +message')
     if (!inquiry) throw createError(404, 'Contact inquiry not found')
     return inquiry
   }
 
   async function transitionOrFind(inquiryId, filter, update) {
-    const inquiry = await inquiryModel.findOneAndUpdate(
-      { _id: inquiryId, ...filter },
-      update,
-      { returnDocument: 'after', runValidators: true },
+    const inquiry = await applySelection(
+      inquiryModel.findOneAndUpdate(
+        { _id: inquiryId, ...filter },
+        update,
+        { returnDocument: 'after', runValidators: true },
+      ),
+      '+email +message',
     )
 
-    return inquiry ?? findInquiry(inquiryId)
+    return inquiry ?? findAdminInquiry(inquiryId)
   }
 
   return {
@@ -80,6 +87,33 @@ export function createContactService({
       return createInquiry(submission)
     },
 
+    async listAdminInquiries({ status, page, limit }) {
+      const filter = status ? { status } : {}
+      const skip = (page - 1) * limit
+      const itemsQuery = inquiryModel
+        .find(filter)
+        .select('+email')
+        .sort({ createdAt: -1, _id: -1 })
+        .skip(skip)
+        .limit(limit)
+      const [items, totalItems] = await Promise.all([
+        itemsQuery,
+        inquiryModel.countDocuments(filter),
+      ])
+
+      return {
+        items,
+        pagination: {
+          page,
+          limit,
+          totalItems,
+          totalPages: Math.ceil(totalItems / limit),
+        },
+      }
+    },
+
+    getAdminInquiry: findAdminInquiry,
+
     async markInquiryRead(inquiryId) {
       const readAt = now()
       return transitionOrFind(
@@ -99,17 +133,32 @@ export function createContactService({
     },
 
     async restoreInquiry(inquiryId) {
-      const current = await findInquiry(inquiryId)
+      const current = await findAdminInquiry(inquiryId)
       if (current.status !== 'archived') return current
 
       const restoredStatus = current.repliedAt ? 'replied' : current.readAt ? 'read' : 'new'
-      const restored = await inquiryModel.findOneAndUpdate(
-        { _id: inquiryId, status: 'archived' },
-        { $set: { status: restoredStatus }, $unset: { archivedAt: 1 } },
-        { returnDocument: 'after', runValidators: true },
+      const restored = await applySelection(
+        inquiryModel.findOneAndUpdate(
+          { _id: inquiryId, status: 'archived' },
+          { $set: { status: restoredStatus }, $unset: { archivedAt: 1 } },
+          { returnDocument: 'after', runValidators: true },
+        ),
+        '+email +message',
       )
 
-      return restored ?? findInquiry(inquiryId)
+      return restored ?? findAdminInquiry(inquiryId)
+    },
+
+    async deleteArchivedInquiry(inquiryId) {
+      const inquiry = await inquiryModel.findOneAndDelete({
+        _id: inquiryId,
+        status: 'archived',
+      })
+      if (inquiry) return
+
+      const existingInquiry = await inquiryModel.findById(inquiryId)
+      if (!existingInquiry) throw createError(404, 'Contact inquiry not found')
+      throw createError(409, 'Contact inquiry must be archived before deletion')
     },
   }
 }

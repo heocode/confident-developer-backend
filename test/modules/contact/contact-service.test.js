@@ -126,6 +126,74 @@ function createSubmissionHarness({ duplicate = false, verificationError, existsE
   return { service, state }
 }
 
+function queryResult(value, operations) {
+  const query = {
+    select(selection) {
+      operations.push({ operation: 'select', value: selection })
+      return query
+    },
+    sort(sort) {
+      operations.push({ operation: 'sort', value: sort })
+      return query
+    },
+    skip(skip) {
+      operations.push({ operation: 'skip', value: skip })
+      return query
+    },
+    limit(limit) {
+      operations.push({ operation: 'limit', value: limit })
+      return query
+    },
+    then(resolve, reject) {
+      return Promise.resolve(value).then(resolve, reject)
+    },
+  }
+
+  return query
+}
+
+function createAdminHarness(inquiries = []) {
+  const state = {
+    inquiries: [...inquiries],
+    findFilters: [],
+    findOperations: [],
+    findByIdCalls: [],
+    detailOperations: [],
+    countFilters: [],
+    deletionFilters: [],
+  }
+  const inquiryModel = {
+    find(filter) {
+      state.findFilters.push(filter)
+      const items = filter.status
+        ? state.inquiries.filter((inquiry) => inquiry.status === filter.status)
+        : state.inquiries
+      return queryResult(items, state.findOperations)
+    },
+    findById(id) {
+      state.findByIdCalls.push(id)
+      const inquiry = state.inquiries.find((item) => item.id === id) ?? null
+      return queryResult(inquiry, state.detailOperations)
+    },
+    async countDocuments(filter) {
+      state.countFilters.push(filter)
+      return filter.status
+        ? state.inquiries.filter((inquiry) => inquiry.status === filter.status).length
+        : state.inquiries.length
+    },
+    async findOneAndDelete(filter) {
+      state.deletionFilters.push(filter)
+      const index = state.inquiries.findIndex(
+        (inquiry) => inquiry.id === filter._id && inquiry.status === filter.status,
+      )
+      if (index === -1) return null
+      return state.inquiries.splice(index, 1)[0]
+    },
+  }
+
+  return { service: createContactService({ inquiryModel }), state }
+}
+
 describe('Contact service', () => {
   it('normalizes and creates a new inquiry with a server-owned fingerprint', async () => {
     const { service, state } = createHarness()
@@ -325,5 +393,69 @@ describe('Contact service', () => {
     })
 
     await assert.rejects(service.markInquiryRead(inquiryId), databaseError)
+  })
+
+  it('lists admin inquiries with private email selection and deterministic pagination', async () => {
+    const inquiries = [
+      inquiryDocument({ status: 'read', readAt: firstNow }),
+      inquiryDocument({ _id: new mongoose.Types.ObjectId(), email: 'second@example.com' }),
+    ]
+    const { service, state } = createAdminHarness(inquiries)
+
+    const result = await service.listAdminInquiries({ status: 'read', page: 2, limit: 10 })
+
+    assert.deepEqual(result.items, [inquiries[0]])
+    assert.deepEqual(result.pagination, {
+      page: 2,
+      limit: 10,
+      totalItems: 1,
+      totalPages: 1,
+    })
+    assert.deepEqual(state.findFilters, [{ status: 'read' }])
+    assert.deepEqual(state.countFilters, [{ status: 'read' }])
+    assert.deepEqual(state.findOperations, [
+      { operation: 'select', value: '+email' },
+      { operation: 'sort', value: { createdAt: -1, _id: -1 } },
+      { operation: 'skip', value: 10 },
+      { operation: 'limit', value: 10 },
+    ])
+  })
+
+  it('selects private email and message for admin detail without selecting the fingerprint', async () => {
+    const inquiry = inquiryDocument()
+    const { service, state } = createAdminHarness([inquiry])
+
+    const result = await service.getAdminInquiry(inquiryId)
+
+    assert.equal(result, inquiry)
+    assert.deepEqual(state.detailOperations, [
+      { operation: 'select', value: '+email +message' },
+    ])
+  })
+
+  it('deletes only archived inquiries', async () => {
+    const archived = inquiryDocument({ status: 'archived', archivedAt: firstNow })
+    const archivedHarness = createAdminHarness([archived])
+
+    await archivedHarness.service.deleteArchivedInquiry(inquiryId)
+
+    assert.equal(archivedHarness.state.inquiries.length, 0)
+    assert.deepEqual(archivedHarness.state.deletionFilters, [
+      { _id: inquiryId, status: 'archived' },
+    ])
+
+    const activeHarness = createAdminHarness([inquiryDocument()])
+    await assert.rejects(
+      activeHarness.service.deleteArchivedInquiry(inquiryId),
+      (error) =>
+        error.status === 409 &&
+        error.message === 'Contact inquiry must be archived before deletion',
+    )
+
+    const missingHarness = createAdminHarness()
+    await assert.rejects(
+      missingHarness.service.deleteArchivedInquiry(inquiryId),
+      (error) => error.status === 404 && error.message === 'Contact inquiry not found',
+    )
   })
 })

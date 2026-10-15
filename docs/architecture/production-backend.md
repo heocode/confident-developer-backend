@@ -42,7 +42,7 @@ The Media module is located at `src/modules/media`. Shared asset persistence and
 
 The Authentication module is located at `src/modules/auth`. It owns administrator and session persistence, authentication business logic, cookie policy, login validation, safe admin serialization, authentication routes, and the middleware used to protect the admin API. Cross-cutting rate limiting, trusted-origin checks, request validation, no-store policy, and global error handling remain shared middleware.
 
-The Contact module is located at `src/modules/contact`. It owns private contact-inquiry persistence, stable scope and budget keys, duplicate-submission fingerprints, server-owned inbox lifecycle transitions, and protected public submission delivery. Protected inbox delivery, email notifications, and administrator replies remain staged additions and are not mounted until their respective contracts are complete.
+The Contact module is located at `src/modules/contact`. It owns private contact-inquiry persistence, stable scope and budget keys, duplicate-submission fingerprints, server-owned inbox lifecycle transitions, protected public submission delivery, and authenticated inbox management. Email notifications and administrator replies remain staged additions and are not mounted until their respective contracts are complete.
 
 The frozen Assignment 2 compatibility layer is isolated under `src/coursework`, retaining its internal models/controllers/routes organization and shared CRUD factories. It is mounted only when `ENABLE_COURSEWORK_API=true`. The production composition root lives at `src/api/v1-router.js` and connects feature-owned routers without owning their behavior. Automated tests mirror configuration, coursework, and production module boundaries under `test`.
 
@@ -184,6 +184,17 @@ POST   /api/v1/contact
 
 The strict body requires normalized name, private email, private message, one or more unique scope keys, one budget key, a Turnstile token, and an empty `website` honeypot. The route requires an exact trusted frontend `Origin`, uses a dedicated five-attempts-per-hour in-memory limiter, verifies the `contact_submit` action before database access, and rejects an identical normalized email/message fingerprint for 24 hours. Links remain valid inside the private message. A successful `201` response returns no inquiry data, and all contact responses are `private, no-store`.
 
+Implemented protected contact inbox routes are:
+
+```text
+GET    /api/v1/admin/inquiries
+GET    /api/v1/admin/inquiries/:id
+PATCH  /api/v1/admin/inquiries/:id/status
+DELETE /api/v1/admin/inquiries/:id
+```
+
+The collection uses strict page-based pagination, optional status filtering, and descending creation-time and `_id` ordering. List representations explicitly expose private email but omit message bodies; detail and lifecycle responses explicitly expose both through an admin-only serializer, while fingerprints remain hidden. Status writes accept only `read`, `archive`, and `restore` actions. Detail GET is side-effect free, lifecycle actions are idempotent, and hard deletion requires the inquiry to be archived first.
+
 Reference submissions always start in `pending` state. A submitter's email is used only for verification and management and is never returned by public reference routes. The frontend must state:
 
 > Your email is used only to verify and manage your reference. It will never be displayed on the site.
@@ -289,7 +300,6 @@ Remaining planned route families are:
 
 ```text
 /api/v1/admin/references
-/api/v1/admin/inquiries
 /api/v1/admin/posts
 ```
 
@@ -368,7 +378,7 @@ Scope keys are `product-design`, `mobile-app`, `website-web-app`, `backend-api`,
 
 Inbox states are `new`, `read`, `replied`, and `archived`. `readAt`, `repliedAt`, and `archivedAt` are server-owned and validated against the current state. Archiving retains prior read and reply dates, while restoring derives the active state from that history. Lifecycle operations are idempotent and use conditional atomic document updates.
 
-New documents receive a non-unique SHA-256 fingerprint of normalized email and message. Public submission checks it against the preceding 24 hours after Turnstile verification, without persisting a raw IP address or permanently preventing a person from sending the same inquiry again. Contact inquiries are admin-only records; public reading is not planned, and protected inbox HTTP delivery remains unmounted until its later implementation stage.
+New documents receive a non-unique SHA-256 fingerprint of normalized email and message. Public submission checks it against the preceding 24 hours after Turnstile verification, without persisting a raw IP address or permanently preventing a person from sending the same inquiry again. Contact inquiries are admin-only records and public reading is not planned. The protected inbox provides paginated status-filtered lists, private detail, explicit lifecycle actions, and archived-only hard deletion; reply delivery remains a later implementation stage.
 
 ### ProfilePost
 

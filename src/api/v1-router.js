@@ -7,6 +7,7 @@ import { validateRequest } from '../middleware/validate-request.js'
 import { serializeAdmin } from '../modules/auth/admin-serializer.js'
 import { createAuthRouter } from '../modules/auth/auth-routes.js'
 import { requireAdminSession } from '../modules/auth/require-admin-session.js'
+import { createAdminContactRouter } from '../modules/contact/admin/admin-contact-routes.js'
 import { createPublicContactRouter } from '../modules/contact/public/public-contact-routes.js'
 import { createAdminGitHubRouter } from '../modules/github/admin/admin-github-routes.js'
 import { createPublicGitHubRouter } from '../modules/github/public/public-github-routes.js'
@@ -103,6 +104,7 @@ export function createV1Router({
   router.use('/admin/profile', createAdminProfileRouter({ profileService }))
   router.use('/admin/github', createAdminGitHubRouter({ githubService }))
   router.use('/admin/profile-post', createAdminProfilePostRouter({ profilePostService }))
+  router.use('/admin/inquiries', createAdminContactRouter({ contactService }))
   router.use('/admin/references', createAdminReferenceRouter({ referenceService }))
   router.use('/admin/projects', createAdminProjectRouter({ projectService }))
   router.use('/admin/services', createAdminServiceRouter({ serviceService }))
