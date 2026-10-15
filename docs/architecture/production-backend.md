@@ -129,11 +129,18 @@ GET /api/v1/profile/resume
 
 It returns a short-cacheable `302` to a backend-generated Cloudinary attachment URL for the active managed PDF. The relative API URL remains stable across replacements, and the frontend never stores or constructs provider URLs.
 
-Remaining planned routes:
+Implemented reference read route:
+
+```text
+GET /api/v1/references
+```
+
+It returns only approved references with page-based pagination and an explicit privacy-safe serializer. Successful lists have a 30-second shared-cache lifetime without stale-while-revalidate so removal by moderation has a bounded cache delay.
+
+Remaining planned public read routes:
 
 ```text
 GET /api/v1/services/:slug
-GET /api/v1/references
 GET /api/v1/posts
 GET /api/v1/posts/:slug
 ```
@@ -317,7 +324,11 @@ Capabilities, tool presentation, related projects, showcase media, and slug deta
 
 ### Reference
 
-References store the author's public name, company, position, testimonial, three bounded ratings, private normalized email, moderation status, display order, submission metadata, and a hashed deletion-management token. Valid states are `pending`, `approved`, and `rejected`. Public serializers expose only approved content and never expose email or moderation internals.
+References use the explicit `portfolio_references` collection. They store the author's public name, company, position, immutable original testimonial, separately editable public testimonial, three integer ratings from 1 to 5, private normalized email, moderation status, display order, server-owned lifecycle dates, submission metadata, and a non-selected hashed deletion-management token. Valid states are `pending`, `approved`, and `rejected`.
+
+Protected moderation is available through `/api/v1/admin/references`, `/:id`, and `/:id/moderation`. Moderation uses explicit `approve`, `reject`, and `reopen` actions. Rejection requires an allowlisted private reason; `other` additionally requires a private note. Admin editing currently changes only the displayed testimonial and display order. The original testimonial is preserved, and no edited marker is exposed publicly.
+
+Public serializers expose only approved content and never expose email, original text, management-token hashes, moderation state, rejection details, or persistence internals. Public submission is deliberately not mounted until its Turnstile, dedicated rate-limit, honeypot, duplicate, normalization, and ownership controls are implemented.
 
 ### ContactInquiry
 

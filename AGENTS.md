@@ -50,6 +50,7 @@ The React, TypeScript, and Vite frontend lives in a separate repository. Do not 
 - `src/modules/media`: the production Media module. Shared asset persistence and lifecycle services live at the module root, provider adapters live under `providers`, and protected HTTP delivery lives under `admin`.
 - `src/modules/profile`: singleton portfolio profile data, currently the managed PDF resume, with separate protected management and stable public download delivery.
 - `src/modules/profile-post`: the singleton Home Profile Post, revision-scoped anonymous likes and views, visitor-cookie policy, and separate public/admin HTTP delivery.
+- `src/modules/references`: moderated production testimonials with private submitter identity, explicit public/admin serializers, public approved-content delivery, and protected moderation.
 - `src/middleware`: shared Express middleware and error handling.
 - `test`: automated tests organized by configuration, coursework compatibility, and production feature module.
 - `docs/assignment`: immutable coursework reference files.
@@ -194,6 +195,16 @@ Current Profile Post decisions:
 - Likes are idempotent per post revision and visitor. Views count at most once per revision and visitor in 24 hours. Compound unique indexes protect both identities under concurrency.
 - Protected management is available at `GET` and `PUT /api/v1/admin/profile-post`. A strict PUT accepts only `text`; identical normalized text is a no-op, while changed text increments revision, updates the date, zeros counters, and deletes old interaction records in one Atlas transaction.
 - The singleton Home post is intentionally separate from the future first-party mini-blog. Do not expand it into generic articles until those screens and contracts are approved.
+
+Current Reference decisions:
+
+- Production `Reference` documents use the explicit `portfolio_references` collection and never share the coursework `references` collection.
+- References store public author identity, an immutable original testimonial, a separately editable public testimonial, three integer ratings from 1 to 5, a private normalized email, moderation state, display order, server-owned lifecycle dates, and a non-selected deletion-management token hash reserved for the protected submission flow.
+- Moderation states are `pending`, `approved`, and `rejected`. Protected moderation uses explicit `approve`, `reject`, and `reopen` actions; rejection requires an allowlisted private reason, and the `other` reason also requires a private note.
+- Admin reads and moderation are available at `/api/v1/admin/references`, `/:id`, and `/:id/moderation`. Admin editing currently permits only the public testimonial and display order; editing testimonial text preserves `originalTestimonial` and records `editedAt` without exposing an edited marker publicly.
+- Public reads are available at `GET /api/v1/references` with page-based pagination. They select only approved references, sort by display order, approval time, and `_id`, and expose neither private email nor moderation and persistence metadata.
+- Successful public reference lists use a 30-second shared-cache lifetime without stale-while-revalidate so moderation removal has a bounded cache delay. Validation and other error responses are not cacheable; all admin responses remain `private, no-store`.
+- Public reference submission remains unavailable until the next implementation stage adds strict input normalization, a dedicated limiter, Turnstile verification, honeypot and duplicate controls, and ownership-token delivery. Do not expose an unprotected submission route in the interim.
 
 Current Site Profile and resume decisions:
 

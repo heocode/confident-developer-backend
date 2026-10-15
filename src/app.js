@@ -21,6 +21,7 @@ import { createMediaService } from './modules/media/media-service.js'
 import { createCloudinaryMediaProvider } from './modules/media/providers/cloudinary-media-provider.js'
 import { createProfileService } from './modules/profile/profile-service.js'
 import { createProfilePostService } from './modules/profile-post/profile-post-service.js'
+import { createReferenceService } from './modules/references/reference-service.js'
 import { createAdminProjectService } from './modules/projects/admin/admin-project-service.js'
 import { createPublicProjectService } from './modules/projects/public/public-project-service.js'
 import { createAdminServiceService } from './modules/services/admin/admin-service-service.js'
@@ -40,6 +41,7 @@ export function createApp({
   mediaService = createMediaService({ mediaProvider }),
   profileService = createProfileService({ mediaService }),
   profilePostService = createProfilePostService(),
+  referenceService = createReferenceService(),
   projectService = createAdminProjectService(),
   publicProjectService = createPublicProjectService(),
   serviceService = createAdminServiceService(),
@@ -97,6 +99,7 @@ export function createApp({
       mediaService,
       profileService,
       profilePostService,
+      referenceService,
       projectService,
       publicProjectService,
       serviceService,

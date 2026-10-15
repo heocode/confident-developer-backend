@@ -14,6 +14,8 @@ import { createAdminProfileRouter } from '../modules/profile/admin/admin-profile
 import { createPublicProfileRouter } from '../modules/profile/public/public-profile-routes.js'
 import { createAdminProfilePostRouter } from '../modules/profile-post/admin/admin-profile-post-routes.js'
 import { createPublicProfilePostRouter } from '../modules/profile-post/public/public-profile-post-routes.js'
+import { createAdminReferenceRouter } from '../modules/references/admin/admin-reference-routes.js'
+import { createPublicReferenceRouter } from '../modules/references/public/public-reference-routes.js'
 import { createAdminProjectRouter } from '../modules/projects/admin/admin-project-routes.js'
 import { createPublicProjectRouter } from '../modules/projects/public/public-project-routes.js'
 import { createAdminServiceRouter } from '../modules/services/admin/admin-service-routes.js'
@@ -25,6 +27,7 @@ export function createV1Router({
   mediaService,
   profileService,
   profilePostService,
+  referenceService,
   projectService,
   publicProjectService,
   serviceService,
@@ -62,6 +65,7 @@ export function createV1Router({
     '/projects',
     createPublicProjectRouter({ projectService: publicProjectService, mediaService }),
   )
+  router.use('/references', createPublicReferenceRouter({ referenceService }))
   router.use('/services', createPublicServiceRouter({ serviceService: publicServiceService }))
   router.use(
     '/admin',
@@ -80,6 +84,7 @@ export function createV1Router({
   router.use('/admin/profile', createAdminProfileRouter({ profileService }))
   router.use('/admin/github', createAdminGitHubRouter({ githubService }))
   router.use('/admin/profile-post', createAdminProfilePostRouter({ profilePostService }))
+  router.use('/admin/references', createAdminReferenceRouter({ referenceService }))
   router.use('/admin/projects', createAdminProjectRouter({ projectService }))
   router.use('/admin/services', createAdminServiceRouter({ serviceService }))
 
