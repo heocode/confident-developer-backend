@@ -36,7 +36,7 @@ The GitHub module is located at `src/modules/github`. It owns the singleton snap
 
 The Profile Post module is located at `src/modules/profile-post`. It owns the singleton Home post, anonymous visitor identity, revision-scoped likes and views, and separate public and admin delivery.
 
-The Profile module is located at `src/modules/profile`. It owns the singleton Site Profile and currently implements managed resume assignment plus stable public download delivery. Future Profile/About fields extend this singleton incrementally.
+The Profile module is located at `src/modules/profile`. It owns the singleton Site Profile, public display identity, managed avatar, managed resume assignment, and stable public delivery. Future Profile/About fields extend this singleton incrementally.
 
 The Media module is located at `src/modules/media`. Shared asset persistence and lifecycle behavior live at the module root, Cloudinary is isolated under `providers`, and authenticated media HTTP delivery lives under `admin`.
 
@@ -121,13 +121,14 @@ GET /api/v1/profile-post/interaction?revision=<number>
 
 The first route returns the current Home post and its aggregate counters with a 15-second shared-cache lifetime. The personalized interaction route reports whether the current visitor liked the rendered revision and is always `private, no-store`.
 
-The implemented public resume route is:
+Implemented public profile routes are:
 
 ```text
+GET /api/v1/profile
 GET /api/v1/profile/resume
 ```
 
-It returns a short-cacheable `302` to a backend-generated Cloudinary attachment URL for the active managed PDF. The relative API URL remains stable across replacements, and the frontend never stores or constructs provider URLs.
+The root route returns the public display name, normalized handle, and provider-neutral optimized avatar representation. The resume route returns a short-cacheable `302` to a backend-generated Cloudinary attachment URL for the active managed PDF. Relative API URLs remain stable across replacements, and the frontend never stores or constructs provider URLs.
 
 Implemented reference read route:
 
@@ -135,7 +136,7 @@ Implemented reference read route:
 GET /api/v1/references
 ```
 
-It returns only approved references with page-based pagination and an explicit privacy-safe serializer. Successful lists have a 30-second shared-cache lifetime without stale-while-revalidate so removal by moderation has a bounded cache delay.
+It returns only approved references with page-based pagination and an explicit privacy-safe serializer. When the total approved count is zero, it also composes the References-owned empty-state message with the Site Profile public identity; otherwise `emptyState` is `null`. Successful lists have a 30-second shared-cache lifetime without stale-while-revalidate so removal by moderation has a bounded cache delay.
 
 Remaining planned public read routes:
 
@@ -248,15 +249,26 @@ PUT /api/v1/admin/profile-post
 
 The strict replacement body contains only plain text of 1–500 characters. Changing it increments the revision, updates the content date, and transactionally clears interaction records and aggregate counters. Replacing it with identical normalized text is a no-op.
 
-Implemented resume administration routes are:
+Implemented profile administration routes are:
 
 ```text
+GET  /api/v1/admin/profile
+PUT  /api/v1/admin/profile
 POST /api/v1/admin/profile/resume/upload-signature
 GET  /api/v1/admin/profile/resume
 PUT  /api/v1/admin/profile/resume
 ```
 
-The upload descriptor permits one managed PDF up to 5 MB. The strict replacement body contains only provider and immutable provider asset ID; the backend obtains all delivery and file metadata from Cloudinary before assigning the document.
+The root routes retrieve and replace the complete public identity using display name, normalized handle, and an active image MediaAsset ID. The resume upload descriptor permits one managed PDF up to 5 MB. Its strict replacement body contains only provider and immutable provider asset ID; the backend obtains all delivery and file metadata from Cloudinary before assigning the document.
+
+Implemented reference section settings routes are:
+
+```text
+GET /api/v1/admin/references/settings
+PUT /api/v1/admin/references/settings
+```
+
+The strict PUT body contains only the empty-state message. A changed normalized message receives a server-owned content date, while identical text is a no-op.
 
 Implemented media routes are:
 
@@ -291,9 +303,9 @@ Schemas will be extended incrementally as their endpoints are implemented. Field
 
 ### SiteProfile
 
-`SiteProfile` uses the immutable singleton key `portfolio` in `site_profiles`. Its currently implemented field is the required reference to the active resume `MediaAsset`. Future approved identity, biography, location, availability, social, education, work, CTA, and portrait fields extend the same singleton rather than creating competing profile records.
+`SiteProfile` uses the immutable singleton key `portfolio` in `site_profiles`. It stores the required active resume reference and an optional complete public identity containing display name, normalized handle, and active image avatar reference. Identity is independent from the private `AdminUser`; existing resume-only records remain valid until identity is configured. Future approved biography, location, availability, social, education, work, and CTA fields extend the same singleton rather than creating competing profile records.
 
-Resume replacement updates only the singleton reference. The previous document remains in the media library for explicit lifecycle review instead of being deleted automatically. The stable public endpoint redirects to a provider-generated attachment URL named `Vadim-Iskakov-Resume.pdf`.
+Identity and resume replacement update only singleton references. Previous assets remain in the media library for explicit lifecycle review instead of being deleted automatically. The stable public identity endpoint returns a backend-generated avatar URL, while the resume endpoint redirects to a provider-generated attachment URL named `Vadim-Iskakov-Resume.pdf`.
 
 ### Project
 
@@ -340,6 +352,8 @@ Protected moderation is available through `/api/v1/admin/references`, `/:id`, an
 
 Public serializers expose only approved content and never expose email, original text, management-token hashes, moderation state, rejection details, or persistence internals.
 
+`ReferenceSectionSettings` uses the immutable singleton key `home` in `reference_section_settings`. It stores the administrator-editable empty-state message and its server-owned content date. The public list includes the composed message and Site Profile identity only when the total approved count is zero; pending and rejected records do not suppress it, and incomplete configuration degrades to `emptyState: null` without breaking approved-content delivery.
+
 Public submission is mounted with strict normalized input, three required ratings, URL rejection, a honeypot, a dedicated five-per-hour IP limiter, 24-hour duplicate detection, and server-side Turnstile verification. Production validates both hostname and the `reference_submit` action; official test credentials are non-production only. Automated failures do not create records, and all accepted submissions begin as `pending` for human moderation.
 
 The submission response returns a random 256-bit management token once, while the document stores only its SHA-256 hash. `GET /api/v1/references/submissions/:id` and `DELETE /api/v1/references/:id/submission` require that token in `X-Reference-Management-Token`; invalid ownership is intentionally indistinguishable from a missing record. Submission and ownership responses are `private, no-store`, submitter email remains private, and raw IP addresses are not persisted.
@@ -364,7 +378,7 @@ The REST adapter lists public owner repositories, excludes forks, validates ever
 
 Media metadata is stored in the explicit `media_assets` collection, separately from domain documents. `kind` distinguishes images from documents while legacy records without the persisted field remain image-compatible. The model stores provider, unique provider asset ID, HTTPS delivery URL, provider resource type, format, integer dimensions, byte size, accessible label, lifecycle state, and timestamps. For Cloudinary, the provider asset ID is the immutable `asset_id`, not the renameable public ID. Images are limited to 10 MB and 10,000 pixels per dimension; the current document flow accepts only PDF up to 5 MB. Binary files are not stored in MongoDB.
 
-Admin serializers return kind, delivery URL, and presentation metadata while omitting the provider asset ID. Media lists use descending creation time and `_id` plus page-based pagination. Detail responses include project usage and whether the Site Profile currently references the asset as its resume. Project publication accepts only active image-kind assets.
+Admin serializers return kind, delivery URL, and presentation metadata while omitting the provider asset ID. Media lists use descending creation time and `_id` plus page-based pagination. Detail responses include project usage and whether the Site Profile currently references the asset as its resume or avatar. Project publication and public identity assignment accept only active image-kind assets.
 
 ## Media Strategy
 
@@ -372,11 +386,11 @@ Cloudinary Free is the initial media provider. The admin frontend requests a sig
 
 After upload, the frontend sends only the provider name, returned immutable asset ID, and, for normal media registration, alt text. The backend fetches authoritative metadata from Cloudinary's Admin API instead of trusting a browser-provided URL, format, dimensions, or byte count. Resume registration owns its fixed accessible label and filename. Repeated registration of the same provider asset is idempotent.
 
-Deletion first checks project logo, Home preview, screenshot, and active Site Profile resume references. A referenced asset returns `409`. An unused asset is persisted as `pendingDeletion` before the provider call; its MongoDB metadata is removed only after Cloudinary reports deletion or that the provider asset is already absent. A failed provider request leaves the pending record available for retry.
+Deletion first checks project logo, Home preview, screenshot, active Site Profile resume, and active Site Profile avatar references. A referenced asset returns `409`. An unused asset is persisted as `pendingDeletion` before the provider call; its MongoDB metadata is removed only after Cloudinary reports deletion or that the provider asset is already absent. A failed provider request leaves the pending record available for retry.
 
 Application code accesses storage through a small provider-neutral media service so Cloudinary can later be replaced by Cloudflare R2 or another provider without rewriting controllers or schemas.
 
-Public serializers ask that service for named `logo`, `homePreview`, or `screenshot` delivery presets. The Cloudinary adapter turns those presets into bounded automatic-format and automatic-quality transformations. The resume uses a separate attachment preset and is exposed only through the stable backend redirect. Public responses contain no provider asset ID or provider lifecycle metadata.
+Public serializers ask that service for named `avatar`, `logo`, `homePreview`, or `screenshot` delivery presets. The Cloudinary adapter turns those presets into bounded automatic-format and automatic-quality transformations. The resume uses a separate attachment preset and is exposed only through the stable backend redirect. Public responses contain no provider asset ID or provider lifecycle metadata.
 
 Initial approved project content is bootstrapped by the interactive `projects:import` script from a versioned manifest and ignored local PNG sources. Its dry-run validates content and media offline. Apply mode authenticates as the owner and uses the same Auth, Media, and Projects HTTP contracts as the future admin UI, including signed direct provider uploads and server-side publication validation; it does not write directly to MongoDB or Cloudinary. An ignored owner-only resume file tracks content hashes and registered IDs, while superseded media remains subject to the normal explicit media lifecycle.
 

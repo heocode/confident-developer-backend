@@ -5,6 +5,7 @@ import { describe, it } from 'node:test'
 import mongoose from 'mongoose'
 
 import { Reference } from '../../../src/modules/references/reference.js'
+import { ReferenceSectionSettings } from '../../../src/modules/references/reference-section-settings.js'
 import { createReferenceService } from '../../../src/modules/references/reference-service.js'
 
 const referenceId = '68e7d0000000000000000001'
@@ -159,6 +160,68 @@ function createSubmissionHarness({ duplicate = false, ownedReference = null } = 
   return { service, state, managementToken }
 }
 
+function createSettingsHarness({ settings = null, totalItems = 0, identity = null } = {}) {
+  const state = { settings, settingsSaves: 0, identityLookups: 0 }
+
+  function SettingsModel(values) {
+    const document = new ReferenceSectionSettings(values)
+    document.save = async () => {
+      await document.validate()
+      state.settingsSaves += 1
+      state.settings = document
+      return document
+    }
+    return document
+  }
+  SettingsModel.findOne = async () => state.settings
+  if (state.settings) {
+    state.settings.save = async () => {
+      await state.settings.validate()
+      state.settingsSaves += 1
+      return state.settings
+    }
+  }
+
+  const referenceModel = {
+    find() {
+      return {
+        select() {
+          return this
+        },
+        sort() {
+          return this
+        },
+        skip() {
+          return this
+        },
+        limit() {
+          return this
+        },
+        lean() {
+          return Promise.resolve([])
+        },
+      }
+    },
+    async countDocuments() {
+      return totalItems
+    },
+  }
+  const profileService = {
+    async findPublicIdentity() {
+      state.identityLookups += 1
+      return identity
+    },
+  }
+  const service = createReferenceService({
+    referenceModel,
+    settingsModel: SettingsModel,
+    profileService,
+    now: () => now,
+  })
+
+  return { service, state }
+}
+
 describe('Reference service', () => {
   it('verifies and stores every accepted submission as pending with only a token hash', async () => {
     const { service, state, managementToken } = createSubmissionHarness()
@@ -281,6 +344,61 @@ describe('Reference service', () => {
     assert.equal(state.query.select.includes('normalizedEmail'), false)
     assert.equal(state.query.lean, true)
     assert.deepEqual(result.pagination, { page: 2, limit: 5, totalItems: 1, totalPages: 1 })
+    assert.equal(result.emptyState, null)
+  })
+
+  it('creates, updates, and preserves the date of unchanged reference settings', async () => {
+    const harness = createSettingsHarness()
+
+    const created = await harness.service.updateReferenceSettings({
+      emptyStateMessage: 'It feels empty, but that is only for now!',
+    })
+    assert.equal(created.created, true)
+    assert.equal(created.settings.messageUpdatedAt.toISOString(), now.toISOString())
+
+    const unchanged = await harness.service.updateReferenceSettings({
+      emptyStateMessage: 'It feels empty, but that is only for now!',
+    })
+    assert.equal(unchanged.changed, false)
+    assert.equal(harness.state.settingsSaves, 1)
+
+    const changed = await harness.service.updateReferenceSettings({
+      emptyStateMessage: 'A new conversation will begin here soon.',
+    })
+    assert.equal(changed.changed, true)
+    assert.equal(harness.state.settingsSaves, 2)
+    assert.equal(changed.settings.emptyStateMessage, 'A new conversation will begin here soon.')
+  })
+
+  it('returns the configured empty state only when no approved references exist', async () => {
+    const settings = new ReferenceSectionSettings({
+      key: 'home',
+      emptyStateMessage: 'It feels empty, but that is only for now!',
+      messageUpdatedAt: now,
+    })
+    const identity = { profile: { publicIdentity: {} }, asset: {}, avatarUrl: 'https://example.com' }
+    const empty = createSettingsHarness({ settings, identity })
+    const emptyResult = await empty.service.listPublicReferences({ page: 1, limit: 10 })
+
+    assert.equal(emptyResult.emptyState.settings, settings)
+    assert.equal(emptyResult.emptyState.identity, identity)
+    assert.equal(empty.state.identityLookups, 1)
+
+    const populated = createSettingsHarness({ settings, identity, totalItems: 1 })
+    const populatedResult = await populated.service.listPublicReferences({ page: 2, limit: 10 })
+    assert.equal(populatedResult.emptyState, null)
+    assert.equal(populated.state.identityLookups, 0)
+  })
+
+  it('omits an incomplete empty state without failing the public reference list', async () => {
+    const missingSettings = createSettingsHarness({ identity: {} })
+    const result = await missingSettings.service.listPublicReferences({ page: 1, limit: 10 })
+    assert.equal(result.emptyState, null)
+
+    await assert.rejects(
+      missingSettings.service.getReferenceSettings(),
+      (error) => error.status === 404,
+    )
   })
 
   it('filters and paginates the admin moderation queue', async () => {

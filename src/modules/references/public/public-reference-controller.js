@@ -1,5 +1,9 @@
 import { sendCacheablePublicJson } from '../../../utils/public-response.js'
-import { serializeOwnedReference, serializePublicReference } from './public-reference-serializer.js'
+import {
+  serializeOwnedReference,
+  serializePublicReference,
+  serializeReferenceEmptyState,
+} from './public-reference-serializer.js'
 
 const REFERENCE_CACHE_CONTROL = 'public, max-age=0, s-maxage=30'
 const REFERENCE_CDN_CACHE_CONTROL = 'max-age=30'
@@ -23,14 +27,20 @@ export function createPublicReferenceController({ referenceService }) {
     },
 
     list: async (request, response) => {
-      const { items, pagination } = await referenceService.listPublicReferences(request.validated.query)
+      const { items, emptyState, pagination } = await referenceService.listPublicReferences(
+        request.validated.query,
+      )
 
       sendCacheablePublicJson(
         response,
         {
           success: true,
           message: 'References retrieved successfully.',
-          data: { items: items.map(serializePublicReference), pagination },
+          data: {
+            emptyState: serializeReferenceEmptyState(emptyState),
+            items: items.map(serializePublicReference),
+            pagination,
+          },
         },
         {
           cacheControl: REFERENCE_CACHE_CONTROL,

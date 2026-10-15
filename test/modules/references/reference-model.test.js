@@ -2,6 +2,9 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
 import { Reference } from '../../../src/modules/references/reference.js'
+import {
+  ReferenceSectionSettings,
+} from '../../../src/modules/references/reference-section-settings.js'
 
 function hasIndex(model, fields, expectedOptions = {}) {
   return model.schema.indexes().some(([indexFields, options]) => {
@@ -79,5 +82,34 @@ describe('Reference model', () => {
     assert.equal(hasIndex(Reference, { status: 1, createdAt: -1, _id: -1 }), true)
     assert.equal(hasIndex(Reference, { normalizedEmail: 1, createdAt: -1 }), true)
     assert.equal(hasIndex(Reference, { managementTokenHash: 1 }, { unique: true, sparse: true }), true)
+  })
+})
+
+describe('ReferenceSectionSettings model', () => {
+  it('stores one bounded Home empty-state message', async () => {
+    const settings = new ReferenceSectionSettings({
+      key: 'home',
+      emptyStateMessage: 'It feels empty, but that is only for now!',
+      messageUpdatedAt: new Date('2026-10-15T12:00:00.000Z'),
+    })
+
+    await settings.validate()
+
+    assert.equal(ReferenceSectionSettings.collection.collectionName, 'reference_section_settings')
+    assert.equal(hasIndex(ReferenceSectionSettings, { key: 1 }, { unique: true }), true)
+  })
+
+  it('rejects an unsupported singleton key and oversized message', async () => {
+    const settings = new ReferenceSectionSettings({
+      key: 'archive',
+      emptyStateMessage: 'x'.repeat(301),
+      messageUpdatedAt: new Date(),
+    })
+
+    await assert.rejects(settings.validate(), (error) => {
+      assert.ok(error.errors.key)
+      assert.ok(error.errors.emptyStateMessage)
+      return true
+    })
   })
 })

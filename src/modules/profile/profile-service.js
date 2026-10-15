@@ -12,6 +12,16 @@ function assertResumeAsset(asset) {
   }
 }
 
+function assertAvatarAsset(asset) {
+  if (!asset || asset.status !== 'active' || (asset.kind ?? 'image') !== 'image') {
+    throw createError(409, 'Registered asset is not an active image')
+  }
+}
+
+function sameId(left, right) {
+  return left?.toString() === right?.toString()
+}
+
 export function createProfileService({
   profileModel = SiteProfile,
   mediaModel = MediaAsset,
@@ -29,7 +39,56 @@ export function createProfileService({
     return { profile, asset }
   }
 
+  async function findPublicIdentity() {
+    const profile = await profileModel.findOne({ key: SITE_PROFILE_KEY })
+    if (!profile?.publicIdentity) return null
+
+    const asset = await mediaModel.findById(profile.publicIdentity.avatarAsset)
+    if (!asset || asset.status !== 'active' || (asset.kind ?? 'image') !== 'image') return null
+
+    return {
+      profile,
+      asset,
+      avatarUrl: mediaService.createDeliveryUrl(asset, 'avatar'),
+    }
+  }
+
   return {
+    findPublicIdentity,
+
+    async getPublicIdentity() {
+      const identity = await findPublicIdentity()
+      if (!identity) throw createError(404, 'Public profile not found')
+      return identity
+    },
+
+    async updatePublicIdentity({ displayName, handle, avatarAssetId }) {
+      const profile = await profileModel.findOne({ key: SITE_PROFILE_KEY })
+      if (!profile) throw createError(409, 'Site profile must be initialized with a resume first')
+
+      const asset = await mediaModel.findById(avatarAssetId)
+      assertAvatarAsset(asset)
+
+      const current = profile.publicIdentity
+      const changed =
+        !current ||
+        current.displayName !== displayName ||
+        current.handle !== handle ||
+        !sameId(current.avatarAsset, asset._id)
+
+      if (changed) {
+        profile.publicIdentity = { displayName, handle, avatarAsset: asset._id }
+        await profile.save()
+      }
+
+      return {
+        profile,
+        asset,
+        avatarUrl: mediaService.createDeliveryUrl(asset, 'avatar'),
+        changed,
+      }
+    },
+
     createResumeUploadDescriptor() {
       return mediaService.createDocumentUploadDescriptor()
     },

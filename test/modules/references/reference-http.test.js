@@ -35,6 +35,28 @@ function referenceData(overrides = {}) {
   }
 }
 
+function settingsData(overrides = {}) {
+  return {
+    key: 'home',
+    emptyStateMessage: 'It feels empty, but that is only for now!',
+    messageUpdatedAt: new Date('2026-10-15T12:00:00.000Z'),
+    ...overrides,
+  }
+}
+
+function emptyStateData() {
+  return {
+    settings: settingsData(),
+    identity: {
+      profile: {
+        publicIdentity: { displayName: 'Vadim Iskakov', handle: 'heoposit' },
+      },
+      asset: { alt: 'Vadim Iskakov' },
+      avatarUrl: 'https://res.cloudinary.com/example/image/upload/avatar.webp',
+    },
+  }
+}
+
 async function requestJson(baseUrl, path, options = {}) {
   const response = await fetch(`${baseUrl}${path}`, options)
   const body = await response.json()
@@ -97,8 +119,17 @@ describe('Reference HTTP contracts', () => {
       calls.publicList.push(query)
       return {
         items: [referenceData()],
+        emptyState: null,
         pagination: { page: query.page, limit: query.limit, totalItems: 1, totalPages: 1 },
       }
+    },
+    async getReferenceSettings() {
+      calls.settingsGet += 1
+      return settingsData()
+    },
+    async updateReferenceSettings(input) {
+      calls.settingsUpdate.push(input)
+      return { settings: settingsData(input), created: false, changed: true }
     },
     async listAdminReferences(query) {
       calls.adminList.push(query)
@@ -148,6 +179,8 @@ describe('Reference HTTP contracts', () => {
       ownedGet: [],
       ownedDelete: [],
       publicList: [],
+      settingsGet: 0,
+      settingsUpdate: [],
       adminList: [],
       get: [],
       update: [],
@@ -180,6 +213,36 @@ describe('Reference HTTP contracts', () => {
     })
     assert.equal('email' in body.data.items[0], false)
     assert.equal('status' in body.data.items[0], false)
+    assert.equal(body.data.emptyState, null)
+  })
+
+  it('returns a fully serialized empty state when no approved references exist', async () => {
+    const originalList = referenceService.listPublicReferences
+    referenceService.listPublicReferences = async (query) => ({
+      items: [],
+      emptyState: emptyStateData(),
+      pagination: { page: query.page, limit: query.limit, totalItems: 0, totalPages: 0 },
+    })
+
+    try {
+      const { response, body } = await requestJson(baseUrl, '/api/v1/references')
+      assert.equal(response.status, 200)
+      assert.deepEqual(body.data.emptyState, {
+        author: {
+          displayName: 'Vadim Iskakov',
+          handle: 'heoposit',
+          avatar: {
+            url: 'https://res.cloudinary.com/example/image/upload/avatar.webp',
+            alt: 'Vadim Iskakov',
+          },
+        },
+        message: 'It feels empty, but that is only for now!',
+        updatedAt: '2026-10-15T12:00:00.000Z',
+      })
+      assert.deepEqual(body.data.items, [])
+    } finally {
+      referenceService.listPublicReferences = originalList
+    }
   })
 
   it('normalizes and submits a private pending reference through a trusted origin', async () => {
@@ -310,6 +373,41 @@ describe('Reference HTTP contracts', () => {
     assert.equal(body.data.items[0].email, 'james@example.com')
     assert.equal(body.data.items[0].originalTestimonial, 'Vadim turns ideas into reliable products.')
     assert.equal('managementTokenHash' in body.data.items[0], false)
+  })
+
+  it('retrieves and updates strict reference section settings through the admin API', async () => {
+    const get = await requestJson(baseUrl, '/api/v1/admin/references/settings', {
+      headers: { cookie: sessionCookie },
+    })
+    assert.equal(get.response.status, 200)
+    assert.equal(get.body.data.emptyStateMessage, 'It feels empty, but that is only for now!')
+    assert.equal(calls.settingsGet, 1)
+
+    const update = await requestJson(baseUrl, '/api/v1/admin/references/settings', {
+      method: 'PUT',
+      headers: {
+        cookie: sessionCookie,
+        origin: frontendOrigin,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ emptyStateMessage: '  A new conversation starts here.  ' }),
+    })
+    assert.equal(update.response.status, 200)
+    assert.equal(update.response.headers.get('cache-control'), 'private, no-store')
+    assert.deepEqual(calls.settingsUpdate.at(-1), {
+      emptyStateMessage: 'A new conversation starts here.',
+    })
+
+    const invalid = await requestJson(baseUrl, '/api/v1/admin/references/settings', {
+      method: 'PUT',
+      headers: {
+        cookie: sessionCookie,
+        origin: frontendOrigin,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ emptyStateMessage: 'Message', status: 'published' }),
+    })
+    assert.equal(invalid.response.status, 400)
   })
 
   it('edits, moderates, retrieves, and deletes through protected routes', async () => {

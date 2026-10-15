@@ -46,7 +46,7 @@ export function createApp({
   profilePostService = createProfilePostService(),
   turnstileProvider = createCloudflareTurnstileProvider(environment.turnstile),
   antiSpamService = createAntiSpamService({ turnstileProvider }),
-  referenceService = createReferenceService({ antiSpamService }),
+  referenceService = createReferenceService({ antiSpamService, profileService }),
   projectService = createAdminProjectService(),
   publicProjectService = createPublicProjectService(),
   serviceService = createAdminServiceService(),

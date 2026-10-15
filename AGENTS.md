@@ -49,7 +49,7 @@ The React, TypeScript, and Vite frontend lives in a separate repository. Do not 
 - `src/modules/projects`: the production Projects module. Its shared `PortfolioProject` model is at the module root and protected write behavior is under `admin`.
 - `src/modules/services`: the production Services module. Its shared `PortfolioService` model is isolated from coursework services, with protected writes under `admin` and public reads under `public`.
 - `src/modules/media`: the production Media module. Shared asset persistence and lifecycle services live at the module root, provider adapters live under `providers`, and protected HTTP delivery lives under `admin`.
-- `src/modules/profile`: singleton portfolio profile data, currently the managed PDF resume, with separate protected management and stable public download delivery.
+- `src/modules/profile`: singleton portfolio profile data, including public identity, managed avatar and PDF resume, with separate public and protected delivery.
 - `src/modules/profile-post`: the singleton Home Profile Post, revision-scoped anonymous likes and views, visitor-cookie policy, and separate public/admin HTTP delivery.
 - `src/modules/references`: moderated production testimonials with private submitter identity, explicit public/admin serializers, public approved-content delivery, and protected moderation.
 - `src/middleware`: shared Express middleware and error handling.
@@ -136,7 +136,7 @@ Current compatibility decisions:
 - Production projects use their own collection and require configurable Home selection, primary-project selection, separate Home/Projects-page ordering, individual theme colors, logos, Home previews, screenshots, a displayed position, date ranges, build breakdowns, and external links.
 - References will require three ratings, moderation state, pagination, deletion ownership, and abuse prevention. New submissions start pending. Submitter email is private and must never appear in public responses.
 - Production services use their own collection, publication lifecycle, separate Home/Services-page ordering, Home placement, and allowlisted frontend-owned icon and tone keys.
-- The singleton Site Profile owns the current resume reference. Resume binaries use the existing provider-neutral media layer rather than MongoDB, the repository, or the Render filesystem.
+- The singleton Site Profile owns the public display name, handle, avatar reference, and current resume reference. Avatar and resume binaries use the existing provider-neutral media layer rather than MongoDB, the repository, or the Render filesystem.
 - Contact inquiries, profile posts, GitHub data, media assets, likes, and views remain separate concerns rather than being forced into the four coursework resources.
 - The current Profile Post is a singleton Home-section post, not yet the future general mini-blog. Its likes and views record real, idempotent or time-deduplicated interactions rather than decorative seed values.
 - Fetch GitHub data through the backend and persist a cache snapshot; public frontend requests must not depend on a live GitHub request.
@@ -209,10 +209,13 @@ Current Reference decisions:
 - Submission bodies are strict, normalized, field-limited, link-free, and include a hidden honeypot plus a Turnstile token. Three ratings must be integers from 1 to 5. A dedicated in-memory limiter permits five submission attempts per IP per hour, and identical normalized email/testimonial pairs are rejected for 24 hours. Revisit the limiter store before horizontally scaling the API.
 - Turnstile verification is provider-isolated under `src/modules/anti-spam`. Production verifies the expected frontend hostname and `reference_submit` action and refuses Cloudflare's official test secrets; non-production may use those test secrets without owning a domain. Verification failures reject before persistence, while every accepted record is created as `pending`; automated checks never assign moderation state `rejected`.
 - A successful submission returns a 256-bit management token exactly once. Only its SHA-256 hash is stored, and subsequent ownership calls supply the raw value through `X-Reference-Management-Token`. Missing, malformed, or incorrect ownership credentials are indistinguishable from a missing record. Raw IP addresses are never persisted.
+- `ReferenceSectionSettings` uses the singleton key `home` in `reference_section_settings` and owns the administrator-editable empty-state message plus its server-owned content date. Protected settings delivery is available at `GET` and `PUT /api/v1/admin/references/settings`; identical text is a no-op.
+- `GET /api/v1/references` returns the composed profile-backed `emptyState` only when the total number of approved references is zero. Pending and rejected submissions do not suppress it, an out-of-range page cannot activate it while approved content exists, and incomplete settings or profile identity produce `emptyState: null` without failing the list.
 
 Current Site Profile and resume decisions:
 
-- `SiteProfile` uses the immutable singleton key `portfolio` in `site_profiles`; the currently implemented field is the required `resumeAsset` reference. Add other approved Profile/About fields incrementally rather than creating competing singleton models.
+- `SiteProfile` uses the immutable singleton key `portfolio` in `site_profiles`. It owns the required `resumeAsset` plus an optional complete `publicIdentity` containing display name, normalized handle, and active image `avatarAsset`; it never derives public identity from `AdminUser`.
+- Public identity is available at cacheable `GET /api/v1/profile`; protected `GET` and `PUT /api/v1/admin/profile` retrieve or replace all identity fields together. Existing resume-only records remain valid until identity is configured, while missing or unusable public identity is exposed as `404` by the Profile endpoint.
 - Protected resume management is available at `POST /api/v1/admin/profile/resume/upload-signature`, `GET /api/v1/admin/profile/resume`, and `PUT /api/v1/admin/profile/resume`. Registration accepts only provider and immutable provider asset ID, then verifies authoritative metadata.
 - Resume uploads use signed direct Cloudinary image-resource uploads under the managed `portfolio/documents/resume/` prefix, accept only PDF up to 5 MB, and never expose provider secrets. Cloudinary Free must have PDF delivery enabled in product-environment Security settings.
 - `GET /api/v1/profile/resume` is the stable public download URL. It returns a cacheable `302` to a backend-generated provider attachment URL named `Vadim-Iskakov-Resume.pdf`; frontend code must not store or construct the provider URL.
@@ -228,9 +231,9 @@ Current media decisions:
 - `MediaAsset.kind` distinguishes `image` and `document`. Existing records without the persisted field remain legacy-compatible images; project media validation accepts only image-kind assets. The only current document flow is the managed profile PDF resume.
 - Media lists use page-based pagination with default limit 24, maximum limit 100, and descending `createdAt`/`_id` ordering.
 - Admin media serializers expose the delivery URL and useful metadata but omit provider asset IDs and persistence internals.
-- Media deletion is blocked while any project or the Site Profile references the asset. Unused assets become `pendingDeletion` before provider deletion; metadata is removed only after provider deletion succeeds or reports the asset already absent.
+- Media deletion is blocked while any project, the Site Profile resume, or the Site Profile avatar references the asset. Unused assets become `pendingDeletion` before provider deletion; metadata is removed only after provider deletion succeeds or reports the asset already absent.
 - Cloudinary environment values are optional as a complete group so the application can start before provider setup. Media provider operations return `503` until all three values are configured.
-- Public media serialization uses provider-neutral `logo`, `homePreview`, and `screenshot` delivery presets. Cloudinary-specific URL transformations remain inside its provider adapter; frontend code must not construct provider URLs.
+- Public media serialization uses provider-neutral `avatar`, `logo`, `homePreview`, and `screenshot` delivery presets. Cloudinary-specific URL transformations remain inside its provider adapter; frontend code must not construct provider URLs.
 
 ## Security
 

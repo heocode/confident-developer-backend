@@ -12,6 +12,7 @@ const MANAGED_DOCUMENT_PUBLIC_ID_PREFIX = 'portfolio/documents/resume/'
 const MANAGED_TAG = 'confident-developer-managed'
 const SIGNATURE_TTL_SECONDS = 60 * 60
 const DELIVERY_TRANSFORMATIONS = Object.freeze({
+  avatar: 'c_fill,w_256,h_256,g_face,f_auto,q_auto',
   logo: 'c_limit,w_512,h_512,f_auto,q_auto',
   homePreview: 'c_limit,w_1600,h_1200,f_auto,q_auto',
   screenshot: 'c_limit,w_2000,h_2000,f_auto,q_auto',

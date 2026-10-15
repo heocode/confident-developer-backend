@@ -83,7 +83,10 @@ describe('admin media HTTP contract', () => {
     },
     async getAsset(id) {
       calls.get.push(id)
-      return { asset: mediaData(), usage: { inUse: true, projectCount: 2, profileResumeCount: 0 } }
+      return {
+        asset: mediaData(),
+        usage: { inUse: true, projectCount: 2, profileResumeCount: 0, profileAvatarCount: 0 },
+      }
     },
     async updateAsset(id, input) {
       calls.update.push({ id, input })
@@ -175,7 +178,12 @@ describe('admin media HTTP contract', () => {
       headers: { cookie: sessionCookie },
     })
     assert.equal(detail.response.status, 200)
-    assert.deepEqual(detail.body.data.usage, { inUse: true, projectCount: 2, profileResumeCount: 0 })
+    assert.deepEqual(detail.body.data.usage, {
+      inUse: true,
+      projectCount: 2,
+      profileResumeCount: 0,
+      profileAvatarCount: 0,
+    })
   })
 
   it('updates alt text and deletes through the protected API', async () => {
@@ -306,6 +314,13 @@ describe('Cloudinary media provider', () => {
       }),
       'https://res.cloudinary.com/example/image/upload/c_limit,w_512,h_512,f_auto,q_auto/v123/generated.webp',
     )
+    assert.equal(
+      provider.createDeliveryUrl({
+        secureUrl: 'https://res.cloudinary.com/example/image/upload/v123/avatar.webp',
+        preset: 'avatar',
+      }),
+      'https://res.cloudinary.com/example/image/upload/c_fill,w_256,h_256,g_face,f_auto,q_auto/v123/avatar.webp',
+    )
     assert.throws(
       () => provider.createDeliveryUrl({ secureUrl: 'https://example.com/image.webp', preset: 'logo' }),
       (error) => error.status === 500,
@@ -433,6 +448,7 @@ function createMediaServiceHarness({
   asset = null,
   projectCount = 0,
   profileResumeCount = 0,
+  profileAvatarCount = 0,
   assets = [],
   totalItems = 0,
 } = {}) {
@@ -478,8 +494,8 @@ function createMediaServiceHarness({
     },
   }
   const profileModel = {
-    async countDocuments() {
-      return profileResumeCount
+    async countDocuments(filter) {
+      return Object.hasOwn(filter, 'resumeAsset') ? profileResumeCount : profileAvatarCount
     },
   }
   const mediaProvider = {
@@ -598,7 +614,12 @@ describe('media service', () => {
     const { service, state } = createMediaServiceHarness({ asset, projectCount: 2 })
 
     const result = await service.getAsset(mediaAssetId)
-    assert.deepEqual(result.usage, { inUse: true, projectCount: 2, profileResumeCount: 0 })
+    assert.deepEqual(result.usage, {
+      inUse: true,
+      projectCount: 2,
+      profileResumeCount: 0,
+      profileAvatarCount: 0,
+    })
 
     await assert.rejects(service.deleteAsset(mediaAssetId), (error) => error.status === 409)
     assert.deepEqual(state.providerDeletions, [])
@@ -610,7 +631,27 @@ describe('media service', () => {
     const { service, state } = createMediaServiceHarness({ asset, profileResumeCount: 1 })
 
     const result = await service.getAsset(mediaAssetId)
-    assert.deepEqual(result.usage, { inUse: true, projectCount: 0, profileResumeCount: 1 })
+    assert.deepEqual(result.usage, {
+      inUse: true,
+      projectCount: 0,
+      profileResumeCount: 1,
+      profileAvatarCount: 0,
+    })
+    await assert.rejects(service.deleteAsset(mediaAssetId), (error) => error.status === 409)
+    assert.deepEqual(state.providerDeletions, [])
+  })
+
+  it('blocks deletion while an asset is the public profile avatar', async () => {
+    const asset = mediaData()
+    const { service, state } = createMediaServiceHarness({ asset, profileAvatarCount: 1 })
+
+    const result = await service.getAsset(mediaAssetId)
+    assert.deepEqual(result.usage, {
+      inUse: true,
+      projectCount: 0,
+      profileResumeCount: 0,
+      profileAvatarCount: 1,
+    })
     await assert.rejects(service.deleteAsset(mediaAssetId), (error) => error.status === 409)
     assert.deepEqual(state.providerDeletions, [])
   })

@@ -21,3 +21,19 @@ export function serializeAdminResume({ profile, asset }) {
     contentUpdatedAt: serializeDate(profileSource.updatedAt),
   }
 }
+
+export function serializeAdminProfileIdentity({ profile, asset, avatarUrl }) {
+  const profileSource = sourceOf(profile)
+  const assetSource = sourceOf(asset)
+
+  return {
+    displayName: profileSource.publicIdentity.displayName,
+    handle: profileSource.publicIdentity.handle,
+    avatar: {
+      id: (assetSource._id ?? assetSource.id).toString(),
+      url: avatarUrl,
+      alt: assetSource.alt,
+    },
+    contentUpdatedAt: serializeDate(profileSource.updatedAt),
+  }
+}

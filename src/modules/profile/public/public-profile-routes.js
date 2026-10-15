@@ -10,6 +10,7 @@ export function createPublicProfileRouter({ profileService }) {
   const router = Router()
   const controller = createPublicProfileController({ profileService })
 
+  router.get('/', validateRequest({ query: emptyQuerySchema }), controller.getPublicIdentity)
   router.get('/resume', validateRequest({ query: emptyQuerySchema }), controller.downloadResume)
 
   return router

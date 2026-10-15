@@ -47,3 +47,17 @@ export function serializeOwnedReference(reference) {
     approvedAt: source.approvedAt ? serializeDate(source.approvedAt) : null,
   }
 }
+import { serializePublicProfileIdentity } from '../../profile/public/public-profile-serializer.js'
+
+
+export function serializeReferenceEmptyState(emptyState) {
+  if (!emptyState) return null
+
+  const settings = sourceOf(emptyState.settings)
+
+  return {
+    author: serializePublicProfileIdentity(emptyState.identity),
+    message: settings.emptyStateMessage,
+    updatedAt: serializeDate(settings.messageUpdatedAt),
+  }
+}

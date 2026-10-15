@@ -8,6 +8,7 @@ import { SiteProfile } from '../../../src/modules/profile/site-profile.js'
 
 const firstAssetId = new mongoose.Types.ObjectId('68f100000000000000000001')
 const secondAssetId = new mongoose.Types.ObjectId('68f100000000000000000002')
+const avatarAssetId = new mongoose.Types.ObjectId('68f100000000000000000003')
 
 function hasIndex(model, fields, expectedOptions = {}) {
   return model.schema.indexes().some(([indexFields, options]) => {
@@ -30,6 +31,19 @@ function resumeAsset(id = firstAssetId, overrides = {}) {
     height: 792,
     bytes: 101_000,
     alt: 'Vadim Iskakov resume',
+    status: 'active',
+    ...overrides,
+  }
+}
+
+function avatarAsset(overrides = {}) {
+  return {
+    _id: avatarAssetId,
+    kind: 'image',
+    provider: 'cloudinary',
+    secureUrl: 'https://res.cloudinary.com/example/image/upload/avatar.webp',
+    format: 'webp',
+    alt: 'Vadim Iskakov',
     status: 'active',
     ...overrides,
   }
@@ -98,6 +112,24 @@ describe('SiteProfile model', () => {
     assert.equal(SiteProfile.collection.collectionName, 'site_profiles')
     assert.equal(profile.resumeAsset.toString(), firstAssetId.toString())
     assert.equal(hasIndex(SiteProfile, { key: 1 }, { unique: true }), true)
+  })
+
+  it('stores a complete optional public identity without coupling it to the administrator', async () => {
+    const profile = new SiteProfile({
+      key: 'portfolio',
+      resumeAsset: firstAssetId,
+      publicIdentity: {
+        displayName: 'Vadim Iskakov',
+        handle: 'Heoposit',
+        avatarAsset: avatarAssetId,
+      },
+    })
+
+    await profile.validate()
+
+    assert.equal(profile.publicIdentity.handle, 'heoposit')
+    assert.equal(profile.publicIdentity.avatarAsset.toString(), avatarAssetId.toString())
+    assert.equal('email' in profile.publicIdentity, false)
   })
 })
 
@@ -171,5 +203,56 @@ describe('profile resume service', () => {
 
     const missing = createHarness()
     await assert.rejects(missing.service.getResume(), (error) => error.status === 404)
+  })
+
+  it('updates and returns a public identity backed by an active image', async () => {
+    const profile = {
+      _id: new mongoose.Types.ObjectId(),
+      key: 'portfolio',
+      resumeAsset: firstAssetId,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    }
+    const harness = createHarness({ existingProfile: profile, asset: avatarAsset() })
+
+    const updated = await harness.service.updatePublicIdentity({
+      displayName: 'Vadim Iskakov',
+      handle: 'heoposit',
+      avatarAssetId: avatarAssetId.toString(),
+    })
+    const publicIdentity = await harness.service.getPublicIdentity()
+
+    assert.equal(updated.changed, true)
+    assert.equal(harness.state.saves, 1)
+    assert.equal(publicIdentity.avatarUrl.endsWith('?preset=avatar'), true)
+    assert.equal(publicIdentity.profile.publicIdentity.handle, 'heoposit')
+
+    const unchanged = await harness.service.updatePublicIdentity({
+      displayName: 'Vadim Iskakov',
+      handle: 'heoposit',
+      avatarAssetId: avatarAssetId.toString(),
+    })
+    assert.equal(unchanged.changed, false)
+    assert.equal(harness.state.saves, 1)
+  })
+
+  it('hides incomplete public identity and rejects an inactive avatar', async () => {
+    const missing = createHarness({ existingProfile: { key: 'portfolio', resumeAsset: firstAssetId } })
+    assert.equal(await missing.service.findPublicIdentity(), null)
+    await assert.rejects(missing.service.getPublicIdentity(), (error) => error.status === 404)
+
+    const profile = { key: 'portfolio', resumeAsset: firstAssetId }
+    const inactive = createHarness({
+      existingProfile: profile,
+      asset: avatarAsset({ status: 'pendingDeletion' }),
+    })
+    await assert.rejects(
+      inactive.service.updatePublicIdentity({
+        displayName: 'Vadim Iskakov',
+        handle: 'heoposit',
+        avatarAssetId: avatarAssetId.toString(),
+      }),
+      (error) => error.status === 409,
+    )
   })
 })

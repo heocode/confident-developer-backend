@@ -49,15 +49,17 @@ export function createMediaService({
   }
 
   async function getUsage(mediaAssetId) {
-    const [projectCount, profileResumeCount] = await Promise.all([
+    const [projectCount, profileResumeCount, profileAvatarCount] = await Promise.all([
       projectModel.countDocuments(projectUsageFilter(mediaAssetId)),
       profileModel.countDocuments({ resumeAsset: mediaAssetId }),
+      profileModel.countDocuments({ 'publicIdentity.avatarAsset': mediaAssetId }),
     ])
 
     return {
-      inUse: projectCount + profileResumeCount > 0,
+      inUse: projectCount + profileResumeCount + profileAvatarCount > 0,
       projectCount,
       profileResumeCount,
+      profileAvatarCount,
     }
   }
 

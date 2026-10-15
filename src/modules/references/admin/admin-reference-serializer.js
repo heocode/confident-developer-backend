@@ -43,3 +43,12 @@ export function serializeAdminReference(reference) {
     updatedAt: serializeDate(source.updatedAt),
   }
 }
+
+export function serializeAdminReferenceSettings(settings) {
+  const source = sourceOf(settings)
+
+  return {
+    emptyStateMessage: source.emptyStateMessage,
+    messageUpdatedAt: serializeDate(source.messageUpdatedAt),
+  }
+}

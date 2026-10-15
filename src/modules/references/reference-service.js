@@ -3,6 +3,10 @@ import { createHash, randomBytes } from 'node:crypto'
 import createError from 'http-errors'
 
 import { Reference } from './reference.js'
+import {
+  REFERENCE_SECTION_KEY,
+  ReferenceSectionSettings,
+} from './reference-section-settings.js'
 
 const DUPLICATE_WINDOW_MS = 24 * 60 * 60 * 1_000
 const MANAGEMENT_TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/
@@ -28,6 +32,8 @@ function clearModerationDecision(reference) {
 
 export function createReferenceService({
   referenceModel = Reference,
+  settingsModel = ReferenceSectionSettings,
+  profileService,
   antiSpamService,
   now = () => new Date(),
   createManagementToken = defaultCreateManagementToken,
@@ -51,6 +57,10 @@ export function createReferenceService({
     })
     if (!reference) throw createError(404, 'Reference submission not found')
     return reference
+  }
+
+  async function findReferenceSettings() {
+    return settingsModel.findOne({ key: REFERENCE_SECTION_KEY })
   }
 
   return {
@@ -175,6 +185,35 @@ export function createReferenceService({
       if (!reference) throw createError(404, 'Reference not found')
     },
 
+    async getReferenceSettings() {
+      const settings = await findReferenceSettings()
+      if (!settings) throw createError(404, 'Reference section settings not found')
+      return settings
+    },
+
+    async updateReferenceSettings({ emptyStateMessage }) {
+      let settings = await findReferenceSettings()
+
+      if (!settings) {
+        settings = new settingsModel({
+          key: REFERENCE_SECTION_KEY,
+          emptyStateMessage,
+          messageUpdatedAt: now(),
+        })
+        await settings.save()
+        return { settings, created: true, changed: true }
+      }
+
+      if (settings.emptyStateMessage === emptyStateMessage) {
+        return { settings, created: false, changed: false }
+      }
+
+      settings.emptyStateMessage = emptyStateMessage
+      settings.messageUpdatedAt = now()
+      await settings.save()
+      return { settings, created: false, changed: true }
+    },
+
     async listPublicReferences({ page, limit }) {
       const filter = { status: 'approved' }
       const skip = (page - 1) * limit
@@ -187,9 +226,20 @@ export function createReferenceService({
         .limit(limit)
         .lean()
       const [items, totalItems] = await Promise.all([query, referenceModel.countDocuments(filter)])
+      let emptyState = null
+
+      if (totalItems === 0 && profileService) {
+        const [settings, identity] = await Promise.all([
+          findReferenceSettings(),
+          profileService.findPublicIdentity(),
+        ])
+
+        if (settings && identity) emptyState = { settings, identity }
+      }
 
       return {
         items,
+        emptyState,
         pagination: {
           page,
           limit,

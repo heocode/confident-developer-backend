@@ -8,6 +8,23 @@ const paginationFields = {
   limit: z.coerce.number().int().min(1).max(100).default(20),
 }
 
+const unsafeCharactersPattern = /[\u0000-\u0009\u000B-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2060-\u206F\uFEFF]/u
+
+export const adminReferenceEmptyQuerySchema = z.strictObject({})
+
+export const updateReferenceSettingsBodySchema = z.strictObject({
+  emptyStateMessage: z
+    .string()
+    .transform((value) => value.normalize('NFC').replace(/\r\n?/gu, '\n').trim())
+    .pipe(
+      z
+        .string()
+        .min(1)
+        .max(300)
+        .refine((value) => !unsafeCharactersPattern.test(value), 'Text contains unsupported characters'),
+    ),
+})
+
 export const adminReferenceIdParamsSchema = z.strictObject({ id: objectIdSchema })
 
 export const adminReferenceListQuerySchema = z.strictObject({

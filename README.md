@@ -89,11 +89,12 @@ Public Profile Post endpoints are:
 
 The public post contains the current text, revision, content date, and real like/view counters. Like and view bodies contain the rendered `revision`. Anonymous interactions use a host-only `HttpOnly` visitor cookie; likes are idempotent and views are counted at most once per visitor in 24 hours. Mutation and personalized interaction responses are never cached.
 
-The public resume download endpoint is:
+Public profile endpoints are:
 
+- `GET /api/v1/profile`
 - `GET /api/v1/profile/resume`
 
-It returns a short-cacheable redirect to the current managed PDF attachment on the media CDN. The frontend should link to this stable relative endpoint rather than storing or constructing a Cloudinary URL.
+The profile endpoint returns only the configured public display name, handle, and optimized avatar representation. The resume endpoint returns a short-cacheable redirect to the current managed PDF attachment on the media CDN. Frontend code should use these stable relative APIs rather than storing or constructing Cloudinary URLs.
 
 Public reference endpoints are:
 
@@ -102,7 +103,7 @@ Public reference endpoints are:
 - `GET /api/v1/references/submissions/:id`
 - `DELETE /api/v1/references/:id/submission`
 
-Only approved references appear in the public list. New submissions always begin as pending and require normalized profile fields, three ratings, the empty honeypot field `website`, and a valid Turnstile token. The frontend must retain the one-time `managementToken` returned by POST and send it as `X-Reference-Management-Token` when retrieving or deleting that submission. Submission and deletion also require the configured frontend `Origin`; private email is never returned by public endpoints.
+Only approved references appear in the public list. When their total count is zero, the response may include the configured profile-backed `emptyState`; otherwise that property is `null`. New submissions always begin as pending and require normalized profile fields, three ratings, the empty honeypot field `website`, and a valid Turnstile token. The frontend must retain the one-time `managementToken` returned by POST and send it as `X-Reference-Management-Token` when retrieving or deleting that submission. Submission and deletion also require the configured frontend `Origin`; private email is never returned by public endpoints.
 
 Admin authentication endpoints are:
 
@@ -143,13 +144,22 @@ Authenticated Profile Post endpoints are:
 
 The `PUT` body is `{ "text": "..." }`. Replacing the text creates a new revision, updates its displayed date, and transactionally resets likes and views. Sending the existing text is a no-op.
 
-Authenticated resume management endpoints are:
+Authenticated profile management endpoints are:
 
+- `GET /api/v1/admin/profile`
+- `PUT /api/v1/admin/profile`
 - `POST /api/v1/admin/profile/resume/upload-signature`
 - `GET /api/v1/admin/profile/resume`
 - `PUT /api/v1/admin/profile/resume`
 
-The upload descriptor permits only a managed PDF up to 5 MB. After direct browser upload, `PUT` registers authoritative provider metadata and assigns the document as the singleton profile resume. Replaced documents remain in the media library until explicitly deleted.
+The root profile endpoints manage the public display name, handle, and active image avatar as one complete identity. The resume upload descriptor permits only a managed PDF up to 5 MB. After direct browser upload, `PUT` registers authoritative provider metadata and assigns the document as the singleton profile resume. Replaced avatar and resume assets remain in the media library until explicitly deleted when unused.
+
+Authenticated reference section settings endpoints are:
+
+- `GET /api/v1/admin/references/settings`
+- `PUT /api/v1/admin/references/settings`
+
+The strict PUT body contains only `emptyStateMessage`. Its date changes only when normalized text changes. The public References response emits the composed message and public profile identity only while no approved references exist.
 
 Authenticated media management endpoints are:
 

@@ -1,7 +1,29 @@
-import { serializeAdminResume } from './admin-profile-serializer.js'
+import { serializeAdminProfileIdentity, serializeAdminResume } from './admin-profile-serializer.js'
 
 export function createAdminProfileController({ profileService }) {
   return {
+    getPublicIdentity: async (_request, response) => {
+      const identity = await profileService.getPublicIdentity()
+
+      response.json({
+        success: true,
+        message: 'Public profile retrieved successfully.',
+        data: serializeAdminProfileIdentity(identity),
+      })
+    },
+
+    updatePublicIdentity: async (request, response) => {
+      const identity = await profileService.updatePublicIdentity(request.validated.body)
+
+      response.json({
+        success: true,
+        message: identity.changed
+          ? 'Public profile updated successfully.'
+          : 'Public profile is already up to date.',
+        data: serializeAdminProfileIdentity(identity),
+      })
+    },
+
     createResumeUploadSignature: (_request, response) => {
       const descriptor = profileService.createResumeUploadDescriptor()
 
