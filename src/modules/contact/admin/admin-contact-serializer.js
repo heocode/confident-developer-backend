@@ -12,6 +12,36 @@ function sourceOf(inquiry) {
   return typeof inquiry?.toObject === 'function' ? inquiry.toObject() : inquiry
 }
 
+function splitAdminView(value) {
+  if (value?.inquiry) {
+    return {
+      inquiry: sourceOf(value.inquiry),
+      ownerNotification: value.ownerNotification ? sourceOf(value.ownerNotification) : null,
+    }
+  }
+
+  return { inquiry: sourceOf(value), ownerNotification: null }
+}
+
+function serializeOwnerNotification(delivery, detailed) {
+  if (!delivery) return null
+
+  const notification = {
+    status: delivery.status,
+    attemptCount: delivery.attemptCount,
+  }
+
+  if (!detailed) return notification
+
+  return {
+    ...notification,
+    lastAttemptAt: serializeDate(delivery.lastAttemptAt),
+    acceptedAt: serializeDate(delivery.acceptedAt),
+    failedAt: serializeDate(delivery.failedAt),
+    lastFailureCode: delivery.lastFailureCode ?? null,
+  }
+}
+
 function serializeBaseInquiry(source) {
   return {
     id: serializeId(source._id ?? source.id),
@@ -28,14 +58,20 @@ function serializeBaseInquiry(source) {
 }
 
 export function serializeAdminContactListItem(inquiry) {
-  return serializeBaseInquiry(sourceOf(inquiry))
+  const view = splitAdminView(inquiry)
+
+  return {
+    ...serializeBaseInquiry(view.inquiry),
+    ownerNotification: serializeOwnerNotification(view.ownerNotification, false),
+  }
 }
 
 export function serializeAdminContactInquiry(inquiry) {
-  const source = sourceOf(inquiry)
+  const view = splitAdminView(inquiry)
 
   return {
-    ...serializeBaseInquiry(source),
-    message: source.message,
+    ...serializeBaseInquiry(view.inquiry),
+    message: view.inquiry.message,
+    ownerNotification: serializeOwnerNotification(view.ownerNotification, true),
   }
 }

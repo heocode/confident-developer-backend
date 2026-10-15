@@ -46,6 +46,7 @@ The React, TypeScript, and Vite frontend lives in a separate repository. Do not 
 - `src/modules/anti-spam`: provider-neutral submission verification with the Cloudflare Turnstile adapter.
 - `src/modules/auth`: administrator identity, opaque sessions, cookie policy, authentication service and HTTP delivery, login validation, safe admin serialization, and session middleware.
 - `src/modules/contact`: private portfolio contact inquiries, stable form option keys, server-owned inbox lifecycle state, duplicate-submission fingerprints, protected public submission delivery, and authenticated inbox management.
+- `src/modules/email`: provider-neutral durable email delivery envelopes and outbox persistence. Provider adapters and dispatch execution are added only when their contracts are implemented.
 - `src/modules/github`: cached GitHub portfolio statistics, the provider-neutral refresh service, GitHub REST adapter, public snapshot delivery, and protected manual refresh.
 - `src/modules/projects`: the production Projects module. Its shared `PortfolioProject` model is at the module root and protected write behavior is under `admin`.
 - `src/modules/services`: the production Services module. Its shared `PortfolioService` model is isolated from coursework services, with protected writes under `admin` and public reads under `public`.
@@ -224,7 +225,17 @@ Current Contact inquiry decisions:
 - Turnstile verification completes before any database access. Identical normalized email/message fingerprints are rejected for 24 hours after verification; accepted inquiries always start as `new`. The current in-memory contact limiter must use a shared store before horizontal scaling.
 - Protected inbox delivery is available at `GET /api/v1/admin/inquiries`, `GET /:id`, `PATCH /:id/status`, and `DELETE /:id` beneath that route family. Lists use strict page-based pagination, optional status filtering, newest-first deterministic ordering, and omit message bodies; detail and lifecycle responses use an explicit private admin serializer.
 - Inbox status mutations accept only the idempotent actions `read`, `archive`, and `restore`. Detail GET does not mutate state, restoring derives the previous active state from retained lifecycle dates, and permanent deletion is restricted to archived inquiries. The `replied` state remains server-owned for the later reply-delivery flow.
-- Notification email, administrator replies, and delivery retry remain subsequent implementation stages.
+- Every newly accepted public inquiry and its `contact-owner-notification` EmailDelivery are created in one Atlas transaction. Existing inquiries are not backfilled and expose `ownerNotification: null`; new jobs begin `pending` and expose only allowlisted operational state through the admin inbox.
+- `EmailDelivery` stores only an immutable kind and source ID plus delivery lifecycle metadata; it never duplicates the contact name, email, message, scope, budget, or rendered email content. One owner-notification job per inquiry is enforced by a unique compound index.
+- Admin inquiry lists batch-load delivery envelopes rather than issuing one query per inquiry. Hard-deleting an archived inquiry transactionally deletes its related delivery envelope; Contact lifecycle actions do not change delivery state.
+- The outbox currently persists tasks only. Notification dispatch, provider configuration, administrator replies, and delivery retry remain subsequent implementation stages.
+
+Current email outbox decisions:
+
+- `EmailDelivery` uses the explicit `email_deliveries` collection. Its states are `pending`, `processing`, `accepted`, and `failed`; lifecycle dates, attempt counts, leases, failure codes, and private provider message identity must agree with the current state.
+- The only current delivery kind is `contact-owner-notification`. The source is identified by immutable ObjectId without a Mongoose population dependency; future dispatch resolves the source according to the allowlisted kind.
+- New contact jobs are scheduled immediately with `attemptCount: 0`. Dispatcher-ready indexes cover due pending work and expired processing leases, but no dispatcher, timer, provider call, or email environment configuration exists yet.
+- Provider message IDs are excluded from queries by default. Delivery IDs, source IDs, leases, provider identities, and scheduling internals are never serialized through the Contact admin API.
 
 Current Site Profile and resume decisions:
 

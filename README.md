@@ -109,7 +109,7 @@ The public contact endpoint is:
 
 - `POST /api/v1/contact`
 
-It accepts required `name`, `email`, `message`, `scopes`, and `budget` fields plus a Turnstile token and the empty `website` honeypot. Scope is a non-empty unique array of stable allowlisted keys, while budget is one allowlisted key. The endpoint requires the configured frontend `Origin`, permits five attempts per IP per hour, rejects the same normalized email/message fingerprint for 24 hours, and returns no inquiry data. Contact messages and email addresses remain private and are not available through any public read endpoint.
+It accepts required `name`, `email`, `message`, `scopes`, and `budget` fields plus a Turnstile token and the empty `website` honeypot. Scope is a non-empty unique array of stable allowlisted keys, while budget is one allowlisted key. The endpoint requires the configured frontend `Origin`, permits five attempts per IP per hour, rejects the same normalized email/message fingerprint for 24 hours, and returns no inquiry data. Every accepted inquiry and its pending owner-notification outbox record are committed in one Atlas transaction. Contact messages and email addresses remain private and are not available through any public read endpoint.
 
 Admin authentication endpoints are:
 
@@ -126,7 +126,7 @@ Authenticated contact inbox endpoints are:
 - `PATCH /api/v1/admin/inquiries/:id/status`
 - `DELETE /api/v1/admin/inquiries/:id`
 
-The inbox list supports strict page-based pagination and an optional `new`, `read`, `replied`, or `archived` status filter. Opening detail is read-only; the frontend explicitly sends the `read` action when an inquiry is actually opened. Status actions also support idempotent `archive` and `restore`, while permanent deletion is allowed only after archiving. Email and message are available only through these authenticated representations, and the submission fingerprint is never returned.
+The inbox list supports strict page-based pagination and an optional `new`, `read`, `replied`, or `archived` status filter. Opening detail is read-only; the frontend explicitly sends the `read` action when an inquiry is actually opened. Status actions also support idempotent `archive` and `restore`, while permanent deletion is allowed only after archiving. Email and message are available only through these authenticated representations, and the submission fingerprint is never returned. Admin representations include the allowlisted owner-notification outbox state; historical inquiries without a job return `ownerNotification: null`. No dispatcher or email provider is active yet, so newly created tasks remain `pending` until the next implementation stage.
 
 Authenticated project management endpoints are:
 

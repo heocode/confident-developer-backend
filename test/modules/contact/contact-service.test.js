@@ -15,6 +15,20 @@ const firstNow = new Date('2026-10-15T13:00:00.000Z')
 const secondNow = new Date('2026-10-15T14:00:00.000Z')
 const fingerprint = 'a'.repeat(64)
 
+function emptyEmailDeliveryService(overrides = {}) {
+  return {
+    async createContactOwnerNotification() {},
+    async listContactOwnerNotifications() { return [] },
+    async getContactOwnerNotification() { return null },
+    async deleteContactDeliveries() {},
+    ...overrides,
+  }
+}
+
+async function runInlineTransaction(operation) {
+  return operation('contact-test-session')
+}
+
 function inquiryDocument(overrides = {}) {
   return new ContactInquiry({
     _id: new mongoose.Types.ObjectId(inquiryId),
@@ -70,6 +84,8 @@ function createHarness(existingInquiry = null, dates = [firstNow]) {
 
   const service = createContactService({
     inquiryModel: InquiryModel,
+    emailDeliveryService: emptyEmailDeliveryService(),
+    runInTransaction: runInlineTransaction,
     now: () => dates[Math.min(dateIndex++, dates.length - 1)],
   })
 
@@ -89,13 +105,28 @@ function submissionInput(overrides = {}) {
   }
 }
 
-function createSubmissionHarness({ duplicate = false, verificationError, existsError } = {}) {
-  const state = { events: [], saved: [], existsFilters: [], verificationCalls: [] }
+function createSubmissionHarness({
+  duplicate = false,
+  verificationError,
+  existsError,
+  deliveryError,
+} = {}) {
+  const state = {
+    events: [],
+    saved: [],
+    saveOptions: [],
+    existsFilters: [],
+    existsOperations: [],
+    verificationCalls: [],
+    deliveryCalls: [],
+    persistedDeliveries: [],
+  }
 
   function InquiryModel(values) {
     const inquiry = inquiryDocument(values)
-    inquiry.save = async () => {
+    inquiry.save = async (options) => {
       state.events.push('save')
+      state.saveOptions.push(options)
       await inquiry.validate()
       state.saved.push(inquiry)
       return inquiry
@@ -103,11 +134,15 @@ function createSubmissionHarness({ duplicate = false, verificationError, existsE
     return inquiry
   }
 
-  InquiryModel.exists = async (filter) => {
+  InquiryModel.exists = (filter) => {
     state.events.push('duplicate-check')
     state.existsFilters.push(filter)
-    if (existsError) throw existsError
-    return duplicate ? { _id: inquiryId } : null
+    const result = existsError
+      ? Promise.reject(existsError)
+      : duplicate
+        ? { _id: inquiryId }
+        : null
+    return queryResult(result, state.existsOperations)
   }
 
   const antiSpamService = {
@@ -117,9 +152,31 @@ function createSubmissionHarness({ duplicate = false, verificationError, existsE
       if (verificationError) throw verificationError
     },
   }
+  const emailDeliveryService = emptyEmailDeliveryService({
+    async createContactOwnerNotification(sourceId, options) {
+      state.events.push('delivery-save')
+      state.deliveryCalls.push({ sourceId: sourceId.toString(), options })
+      if (deliveryError) throw deliveryError
+      state.persistedDeliveries.push(sourceId.toString())
+    },
+  })
   const service = createContactService({
     inquiryModel: InquiryModel,
     antiSpamService,
+    emailDeliveryService,
+    runInTransaction: async (operation) => {
+      state.events.push('transaction-start')
+      try {
+        const result = await operation('contact-test-session')
+        state.events.push('transaction-commit')
+        return result
+      } catch (error) {
+        state.events.push('transaction-rollback')
+        state.saved.length = 0
+        state.persistedDeliveries.length = 0
+        throw error
+      }
+    },
     now: () => firstNow,
   })
 
@@ -144,6 +201,10 @@ function queryResult(value, operations) {
       operations.push({ operation: 'limit', value: limit })
       return query
     },
+    session(session) {
+      operations.push({ operation: 'session', value: session })
+      return query
+    },
     then(resolve, reject) {
       return Promise.resolve(value).then(resolve, reject)
     },
@@ -152,15 +213,19 @@ function queryResult(value, operations) {
   return query
 }
 
-function createAdminHarness(inquiries = []) {
+function createAdminHarness(inquiries = [], deliveries = []) {
   const state = {
     inquiries: [...inquiries],
+    deliveries: [...deliveries],
     findFilters: [],
     findOperations: [],
     findByIdCalls: [],
     detailOperations: [],
     countFilters: [],
     deletionFilters: [],
+    deliveryListCalls: [],
+    deliveryGetCalls: [],
+    deliveryDeleteCalls: [],
   }
   const inquiryModel = {
     find(filter) {
@@ -191,7 +256,32 @@ function createAdminHarness(inquiries = []) {
     },
   }
 
-  return { service: createContactService({ inquiryModel }), state }
+  const emailDeliveryService = emptyEmailDeliveryService({
+    async listContactOwnerNotifications(sourceIds) {
+      state.deliveryListCalls.push(sourceIds.map((id) => id.toString()))
+      const keys = new Set(sourceIds.map((id) => id.toString()))
+      return state.deliveries.filter((delivery) => keys.has(delivery.sourceId.toString()))
+    },
+    async getContactOwnerNotification(sourceId) {
+      state.deliveryGetCalls.push(sourceId.toString())
+      return state.deliveries.find((delivery) => delivery.sourceId.toString() === sourceId.toString()) ?? null
+    },
+    async deleteContactDeliveries(sourceId, options) {
+      state.deliveryDeleteCalls.push({ sourceId: sourceId.toString(), options })
+      state.deliveries = state.deliveries.filter(
+        (delivery) => delivery.sourceId.toString() !== sourceId.toString(),
+      )
+    },
+  })
+
+  return {
+    service: createContactService({
+      inquiryModel,
+      emailDeliveryService,
+      runInTransaction: runInlineTransaction,
+    }),
+    state,
+  }
 }
 
 describe('Contact service', () => {
@@ -239,7 +329,14 @@ describe('Contact service', () => {
 
     const inquiry = await service.submitInquiry(submissionInput(), { remoteIp: '203.0.113.10' })
 
-    assert.deepEqual(state.events, ['verification', 'duplicate-check', 'save'])
+    assert.deepEqual(state.events, [
+      'verification',
+      'transaction-start',
+      'duplicate-check',
+      'save',
+      'delivery-save',
+      'transaction-commit',
+    ])
     assert.deepEqual(state.verificationCalls, [
       { token: 'verified-contact-token', remoteIp: '203.0.113.10' },
     ])
@@ -253,6 +350,17 @@ describe('Contact service', () => {
     assert.equal(inquiry.message.includes('https://example.com'), true)
     assert.equal('turnstileToken' in inquiry.toObject(), false)
     assert.equal('website' in inquiry.toObject(), false)
+    assert.deepEqual(state.saveOptions, [{ session: 'contact-test-session' }])
+    assert.deepEqual(state.existsOperations, [
+      { operation: 'session', value: 'contact-test-session' },
+    ])
+    assert.deepEqual(state.deliveryCalls, [
+      {
+        sourceId: inquiryId,
+        options: { session: 'contact-test-session', nextAttemptAt: firstNow },
+      },
+    ])
+    assert.deepEqual(state.persistedDeliveries, [inquiryId])
   })
 
   it('rejects a recent duplicate after verification without saving it', async () => {
@@ -263,7 +371,12 @@ describe('Contact service', () => {
       (error) => error.status === 409 && error.message === 'This inquiry was already submitted recently',
     )
 
-    assert.deepEqual(state.events, ['verification', 'duplicate-check'])
+    assert.deepEqual(state.events, [
+      'verification',
+      'transaction-start',
+      'duplicate-check',
+      'transaction-rollback',
+    ])
     assert.equal(state.saved.length, 0)
   })
 
@@ -286,8 +399,31 @@ describe('Contact service', () => {
     const { service, state } = createSubmissionHarness({ existsError: databaseError })
 
     await assert.rejects(service.submitInquiry(submissionInput()), databaseError)
-    assert.deepEqual(state.events, ['verification', 'duplicate-check'])
+    assert.deepEqual(state.events, [
+      'verification',
+      'transaction-start',
+      'duplicate-check',
+      'transaction-rollback',
+    ])
     assert.equal(state.saved.length, 0)
+  })
+
+  it('rolls back the inquiry when the outbox delivery cannot be saved', async () => {
+    const deliveryError = new Error('delivery unavailable')
+    const { service, state } = createSubmissionHarness({ deliveryError })
+
+    await assert.rejects(service.submitInquiry(submissionInput()), deliveryError)
+
+    assert.deepEqual(state.events, [
+      'verification',
+      'transaction-start',
+      'duplicate-check',
+      'save',
+      'delivery-save',
+      'transaction-rollback',
+    ])
+    assert.equal(state.saved.length, 0)
+    assert.equal(state.persistedDeliveries.length, 0)
   })
 
   it('marks a new inquiry read without replacing its original read date', async () => {
@@ -361,8 +497,8 @@ describe('Contact service', () => {
 
     const result = await service.markInquiryRead(inquiryId)
 
-    assert.equal(result.status, 'archived')
-    await result.validate()
+    assert.equal(result.inquiry.status, 'archived')
+    await result.inquiry.validate()
   })
 
   it('returns the same active document when restore is repeated', async () => {
@@ -371,7 +507,7 @@ describe('Contact service', () => {
 
     const result = await service.restoreInquiry(inquiryId)
 
-    assert.equal(result, inquiry)
+    assert.equal(result.inquiry, inquiry)
     assert.equal(state.updates.length, 0)
   })
 
@@ -390,6 +526,7 @@ describe('Contact service', () => {
           throw databaseError
         },
       },
+      emailDeliveryService: emptyEmailDeliveryService(),
     })
 
     await assert.rejects(service.markInquiryRead(inquiryId), databaseError)
@@ -400,11 +537,16 @@ describe('Contact service', () => {
       inquiryDocument({ status: 'read', readAt: firstNow }),
       inquiryDocument({ _id: new mongoose.Types.ObjectId(), email: 'second@example.com' }),
     ]
-    const { service, state } = createAdminHarness(inquiries)
+    const ownerNotification = {
+      sourceId: inquiries[0]._id,
+      status: 'pending',
+      attemptCount: 0,
+    }
+    const { service, state } = createAdminHarness(inquiries, [ownerNotification])
 
     const result = await service.listAdminInquiries({ status: 'read', page: 2, limit: 10 })
 
-    assert.deepEqual(result.items, [inquiries[0]])
+    assert.deepEqual(result.items, [{ inquiry: inquiries[0], ownerNotification }])
     assert.deepEqual(result.pagination, {
       page: 2,
       limit: 10,
@@ -419,6 +561,7 @@ describe('Contact service', () => {
       { operation: 'skip', value: 10 },
       { operation: 'limit', value: 10 },
     ])
+    assert.deepEqual(state.deliveryListCalls, [[inquiries[0].id]])
   })
 
   it('selects private email and message for admin detail without selecting the fingerprint', async () => {
@@ -427,7 +570,8 @@ describe('Contact service', () => {
 
     const result = await service.getAdminInquiry(inquiryId)
 
-    assert.equal(result, inquiry)
+    assert.equal(result.inquiry, inquiry)
+    assert.equal(result.ownerNotification, null)
     assert.deepEqual(state.detailOperations, [
       { operation: 'select', value: '+email +message' },
     ])
@@ -435,7 +579,10 @@ describe('Contact service', () => {
 
   it('deletes only archived inquiries', async () => {
     const archived = inquiryDocument({ status: 'archived', archivedAt: firstNow })
-    const archivedHarness = createAdminHarness([archived])
+    const archivedHarness = createAdminHarness(
+      [archived],
+      [{ sourceId: archived._id, status: 'pending', attemptCount: 0 }],
+    )
 
     await archivedHarness.service.deleteArchivedInquiry(inquiryId)
 
@@ -443,6 +590,13 @@ describe('Contact service', () => {
     assert.deepEqual(archivedHarness.state.deletionFilters, [
       { _id: inquiryId, status: 'archived' },
     ])
+    assert.deepEqual(archivedHarness.state.deliveryDeleteCalls, [
+      {
+        sourceId: inquiryId,
+        options: { session: 'contact-test-session' },
+      },
+    ])
+    assert.equal(archivedHarness.state.deliveries.length, 0)
 
     const activeHarness = createAdminHarness([inquiryDocument()])
     await assert.rejects(

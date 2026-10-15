@@ -1,7 +1,9 @@
 import { createHash } from 'node:crypto'
 
 import createError from 'http-errors'
+import mongoose from 'mongoose'
 
+import { createEmailDeliveryService } from '../email/email-delivery-service.js'
 import { ContactInquiry } from './contact-inquiry.js'
 import {
   normalizeContactEmail,
@@ -15,6 +17,29 @@ function applySelection(query, selection) {
   return typeof query?.select === 'function' ? query.select(selection) : query
 }
 
+function useSession(query, session) {
+  return session && typeof query?.session === 'function' ? query.session(session) : query
+}
+
+async function runInMongoTransaction(operation) {
+  const session = await mongoose.startSession()
+
+  try {
+    return await session.withTransaction(() => operation(session))
+  } finally {
+    await session.endSession()
+  }
+}
+
+function idOf(document) {
+  return document?._id ?? document?.id
+}
+
+function idKey(value) {
+  const id = value?._id ?? (typeof value?.id === 'string' ? value.id : value)
+  return id.toString()
+}
+
 export function createContactSubmissionFingerprint({ email, message }) {
   return createHash('sha256')
     .update(`${normalizeContactEmail(email)}\0${normalizeContactMessage(message)}`)
@@ -24,6 +49,8 @@ export function createContactSubmissionFingerprint({ email, message }) {
 export function createContactService({
   inquiryModel = ContactInquiry,
   antiSpamService,
+  emailDeliveryService = createEmailDeliveryService(),
+  runInTransaction = runInMongoTransaction,
   now = () => new Date(),
 } = {}) {
   function normalizeSubmission(input) {
@@ -36,14 +63,14 @@ export function createContactService({
     }
   }
 
-  async function createInquiry(input) {
+  async function createInquiry(input, { session } = {}) {
     const submission = normalizeSubmission(input)
     const inquiry = new inquiryModel({
       ...submission,
       submissionFingerprint: createContactSubmissionFingerprint(submission),
     })
 
-    await inquiry.save()
+    await inquiry.save({ session })
     return inquiry
   }
 
@@ -51,6 +78,11 @@ export function createContactService({
     const inquiry = await applySelection(inquiryModel.findById(inquiryId), '+email +message')
     if (!inquiry) throw createError(404, 'Contact inquiry not found')
     return inquiry
+  }
+
+  async function createAdminInquiryView(inquiry) {
+    const ownerNotification = await emailDeliveryService.getContactOwnerNotification(idOf(inquiry))
+    return { inquiry, ownerNotification }
   }
 
   async function transitionOrFind(inquiryId, filter, update) {
@@ -76,15 +108,27 @@ export function createContactService({
 
       const submission = normalizeSubmission(input)
       const submissionFingerprint = createContactSubmissionFingerprint(submission)
-      const duplicateSince = new Date(now().getTime() - DUPLICATE_WINDOW_MS)
-      const duplicate = await inquiryModel.exists({
-        submissionFingerprint,
-        createdAt: { $gte: duplicateSince },
+      const submittedAt = now()
+      const duplicateSince = new Date(submittedAt.getTime() - DUPLICATE_WINDOW_MS)
+
+      return runInTransaction(async (session) => {
+        const duplicate = await useSession(
+          inquiryModel.exists({
+            submissionFingerprint,
+            createdAt: { $gte: duplicateSince },
+          }),
+          session,
+        )
+
+        if (duplicate) throw createError(409, 'This inquiry was already submitted recently')
+
+        const inquiry = await createInquiry(submission, { session })
+        await emailDeliveryService.createContactOwnerNotification(idOf(inquiry), {
+          session,
+          nextAttemptAt: submittedAt,
+        })
+        return inquiry
       })
-
-      if (duplicate) throw createError(409, 'This inquiry was already submitted recently')
-
-      return createInquiry(submission)
     },
 
     async listAdminInquiries({ status, page, limit }) {
@@ -96,10 +140,20 @@ export function createContactService({
         .sort({ createdAt: -1, _id: -1 })
         .skip(skip)
         .limit(limit)
-      const [items, totalItems] = await Promise.all([
+      const [inquiries, totalItems] = await Promise.all([
         itemsQuery,
         inquiryModel.countDocuments(filter),
       ])
+      const deliveries = await emailDeliveryService.listContactOwnerNotifications(
+        inquiries.map(idOf),
+      )
+      const deliveryBySourceId = new Map(
+        deliveries.map((delivery) => [idKey(delivery.sourceId), delivery]),
+      )
+      const items = inquiries.map((inquiry) => ({
+        inquiry,
+        ownerNotification: deliveryBySourceId.get(idKey(inquiry)) ?? null,
+      }))
 
       return {
         items,
@@ -112,29 +166,33 @@ export function createContactService({
       }
     },
 
-    getAdminInquiry: findAdminInquiry,
+    async getAdminInquiry(inquiryId) {
+      return createAdminInquiryView(await findAdminInquiry(inquiryId))
+    },
 
     async markInquiryRead(inquiryId) {
       const readAt = now()
-      return transitionOrFind(
+      const inquiry = await transitionOrFind(
         inquiryId,
         { status: 'new' },
         { $set: { status: 'read', readAt } },
       )
+      return createAdminInquiryView(inquiry)
     },
 
     async archiveInquiry(inquiryId) {
       const archivedAt = now()
-      return transitionOrFind(
+      const inquiry = await transitionOrFind(
         inquiryId,
         { status: { $ne: 'archived' } },
         { $set: { status: 'archived', archivedAt } },
       )
+      return createAdminInquiryView(inquiry)
     },
 
     async restoreInquiry(inquiryId) {
       const current = await findAdminInquiry(inquiryId)
-      if (current.status !== 'archived') return current
+      if (current.status !== 'archived') return createAdminInquiryView(current)
 
       const restoredStatus = current.repliedAt ? 'replied' : current.readAt ? 'read' : 'new'
       const restored = await applySelection(
@@ -146,19 +204,27 @@ export function createContactService({
         '+email +message',
       )
 
-      return restored ?? findAdminInquiry(inquiryId)
+      return createAdminInquiryView(restored ?? (await findAdminInquiry(inquiryId)))
     },
 
     async deleteArchivedInquiry(inquiryId) {
-      const inquiry = await inquiryModel.findOneAndDelete({
-        _id: inquiryId,
-        status: 'archived',
-      })
-      if (inquiry) return
+      return runInTransaction(async (session) => {
+        const inquiry = await useSession(
+          inquiryModel.findOneAndDelete({
+            _id: inquiryId,
+            status: 'archived',
+          }),
+          session,
+        )
+        if (inquiry) {
+          await emailDeliveryService.deleteContactDeliveries(idOf(inquiry), { session })
+          return
+        }
 
-      const existingInquiry = await inquiryModel.findById(inquiryId)
-      if (!existingInquiry) throw createError(404, 'Contact inquiry not found')
-      throw createError(409, 'Contact inquiry must be archived before deletion')
+        const existingInquiry = await useSession(inquiryModel.findById(inquiryId), session)
+        if (!existingInquiry) throw createError(404, 'Contact inquiry not found')
+        throw createError(409, 'Contact inquiry must be archived before deletion')
+      })
     },
   }
 }

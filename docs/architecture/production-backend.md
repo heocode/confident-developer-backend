@@ -44,6 +44,8 @@ The Authentication module is located at `src/modules/auth`. It owns administrato
 
 The Contact module is located at `src/modules/contact`. It owns private contact-inquiry persistence, stable scope and budget keys, duplicate-submission fingerprints, server-owned inbox lifecycle transitions, protected public submission delivery, and authenticated inbox management. Email notifications and administrator replies remain staged additions and are not mounted until their respective contracts are complete.
 
+The Email module is located at `src/modules/email`. It currently owns provider-neutral durable delivery envelopes and their outbox persistence contract. Provider adapters, dispatch execution, and runtime scheduling remain unimplemented until the next stage.
+
 The frozen Assignment 2 compatibility layer is isolated under `src/coursework`, retaining its internal models/controllers/routes organization and shared CRUD factories. It is mounted only when `ENABLE_COURSEWORK_API=true`. The production composition root lives at `src/api/v1-router.js` and connects feature-owned routers without owning their behavior. Automated tests mirror configuration, coursework, and production module boundaries under `test`.
 
 ## Deployment Topology
@@ -182,7 +184,7 @@ Implemented contact submission route:
 POST   /api/v1/contact
 ```
 
-The strict body requires normalized name, private email, private message, one or more unique scope keys, one budget key, a Turnstile token, and an empty `website` honeypot. The route requires an exact trusted frontend `Origin`, uses a dedicated five-attempts-per-hour in-memory limiter, verifies the `contact_submit` action before database access, and rejects an identical normalized email/message fingerprint for 24 hours. Links remain valid inside the private message. A successful `201` response returns no inquiry data, and all contact responses are `private, no-store`.
+The strict body requires normalized name, private email, private message, one or more unique scope keys, one budget key, a Turnstile token, and an empty `website` honeypot. The route requires an exact trusted frontend `Origin`, uses a dedicated five-attempts-per-hour in-memory limiter, verifies the `contact_submit` action before database access, and rejects an identical normalized email/message fingerprint for 24 hours. Links remain valid inside the private message. A new inquiry and its pending owner-notification outbox envelope commit in one Atlas transaction. A successful `201` response returns no inquiry data, and all contact responses are `private, no-store`.
 
 Implemented protected contact inbox routes are:
 
@@ -193,7 +195,7 @@ PATCH  /api/v1/admin/inquiries/:id/status
 DELETE /api/v1/admin/inquiries/:id
 ```
 
-The collection uses strict page-based pagination, optional status filtering, and descending creation-time and `_id` ordering. List representations explicitly expose private email but omit message bodies; detail and lifecycle responses explicitly expose both through an admin-only serializer, while fingerprints remain hidden. Status writes accept only `read`, `archive`, and `restore` actions. Detail GET is side-effect free, lifecycle actions are idempotent, and hard deletion requires the inquiry to be archived first.
+The collection uses strict page-based pagination, optional status filtering, and descending creation-time and `_id` ordering. List representations explicitly expose private email but omit message bodies; detail and lifecycle responses explicitly expose both through an admin-only serializer, while fingerprints remain hidden. Admin representations also expose an allowlisted owner-notification state, loaded in one batch for list pages; historical inquiries without an outbox record return `null`. Status writes accept only `read`, `archive`, and `restore` actions. Detail GET is side-effect free, lifecycle actions are idempotent, and hard deletion requires the inquiry to be archived first and transactionally removes its delivery envelope.
 
 Reference submissions always start in `pending` state. A submitter's email is used only for verification and management and is never returned by public reference routes. The frontend must state:
 
@@ -378,7 +380,15 @@ Scope keys are `product-design`, `mobile-app`, `website-web-app`, `backend-api`,
 
 Inbox states are `new`, `read`, `replied`, and `archived`. `readAt`, `repliedAt`, and `archivedAt` are server-owned and validated against the current state. Archiving retains prior read and reply dates, while restoring derives the active state from that history. Lifecycle operations are idempotent and use conditional atomic document updates.
 
-New documents receive a non-unique SHA-256 fingerprint of normalized email and message. Public submission checks it against the preceding 24 hours after Turnstile verification, without persisting a raw IP address or permanently preventing a person from sending the same inquiry again. Contact inquiries are admin-only records and public reading is not planned. The protected inbox provides paginated status-filtered lists, private detail, explicit lifecycle actions, and archived-only hard deletion; reply delivery remains a later implementation stage.
+New documents receive a non-unique SHA-256 fingerprint of normalized email and message. Public submission checks it against the preceding 24 hours after Turnstile verification, without persisting a raw IP address or permanently preventing a person from sending the same inquiry again. Contact inquiries are admin-only records and public reading is not planned. The protected inbox provides paginated status-filtered lists, private detail, explicit lifecycle actions, archived-only hard deletion, and the related owner-notification outbox state; reply delivery remains a later implementation stage.
+
+### EmailDelivery
+
+`EmailDelivery` uses the explicit `email_deliveries` collection as the durable provider-neutral outbox. The current `contact-owner-notification` kind stores an immutable ContactInquiry source ID and operational lifecycle metadata only; it does not duplicate contact identity, message content, scope, budget, recipient addresses, or rendered email bodies.
+
+Delivery states are `pending`, `processing`, `accepted`, and `failed`. Attempt counts, scheduling dates, leases, terminal dates, allowlisted failure codes, and the non-selected provider message ID are validated against the state. A unique `kind` plus `sourceId` index permits only one owner notification per inquiry, while separate indexes prepare due-work claims and expired-lease recovery. No worker or provider is active yet, so this stage creates only immediately scheduled `pending` records.
+
+Contact submission creates the inquiry and outbox envelope in one Atlas transaction. Archived-only hard deletion removes both in one transaction. Existing inquiries are deliberately not backfilled. The future dispatcher will derive its stable provider idempotency key from the immutable EmailDelivery ID and resolve private source content only when processing the allowlisted delivery kind.
 
 ### ProfilePost
 

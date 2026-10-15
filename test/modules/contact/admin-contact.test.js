@@ -27,6 +27,28 @@ function inquiryData(overrides = {}) {
   }
 }
 
+function ownerNotificationData(overrides = {}) {
+  return {
+    id: '68f120000000000000000002',
+    kind: 'contact-owner-notification',
+    sourceId: inquiryId,
+    status: 'pending',
+    attemptCount: 0,
+    nextAttemptAt: new Date('2026-10-15T13:00:00.000Z'),
+    lastAttemptAt: null,
+    leaseUntil: null,
+    acceptedAt: null,
+    failedAt: null,
+    lastFailureCode: null,
+    providerMessageId: 'private-provider-message-id',
+    ...overrides,
+  }
+}
+
+function inquiryView(inquiryOverrides = {}, notification = ownerNotificationData()) {
+  return { inquiry: inquiryData(inquiryOverrides), ownerNotification: notification }
+}
+
 async function requestJson(baseUrl, path, options = {}) {
   const response = await fetch(`${baseUrl}${path}`, options)
   const body = await response.json()
@@ -61,28 +83,28 @@ describe('admin contact inbox HTTP contract', () => {
     async listAdminInquiries(query) {
       calls.list.push(query)
       return {
-        items: [inquiryData()],
+        items: [inquiryView()],
         pagination: { page: query.page, limit: query.limit, totalItems: 1, totalPages: 1 },
       }
     },
     async getAdminInquiry(id) {
       calls.get.push(id)
-      return inquiryData()
+      return inquiryView()
     },
     async markInquiryRead(id) {
       calls.status.push({ id, action: 'read' })
-      return inquiryData({ status: 'read', readAt: new Date('2026-10-15T14:00:00.000Z') })
+      return inquiryView({ status: 'read', readAt: new Date('2026-10-15T14:00:00.000Z') })
     },
     async archiveInquiry(id) {
       calls.status.push({ id, action: 'archive' })
-      return inquiryData({
+      return inquiryView({
         status: 'archived',
         archivedAt: new Date('2026-10-15T14:00:00.000Z'),
       })
     },
     async restoreInquiry(id) {
       calls.status.push({ id, action: 'restore' })
-      return inquiryData()
+      return inquiryView()
     },
     async deleteArchivedInquiry(id) {
       calls.delete.push(id)
@@ -145,6 +167,10 @@ describe('admin contact inbox HTTP contract', () => {
       totalPages: 1,
     })
     assert.equal(body.data.items[0].email, 'jordan@example.com')
+    assert.deepEqual(body.data.items[0].ownerNotification, {
+      status: 'pending',
+      attemptCount: 0,
+    })
     assert.equal('message' in body.data.items[0], false)
     assert.equal('submissionFingerprint' in body.data.items[0], false)
     assert.equal('_id' in body.data.items[0], false)
@@ -161,7 +187,19 @@ describe('admin contact inbox HTTP contract', () => {
     assert.equal(body.data.id, inquiryId)
     assert.equal(body.data.message, 'I would like to discuss a portfolio application.')
     assert.equal(body.data.createdAt, '2026-10-15T13:00:00.000Z')
+    assert.deepEqual(body.data.ownerNotification, {
+      status: 'pending',
+      attemptCount: 0,
+      lastAttemptAt: null,
+      acceptedAt: null,
+      failedAt: null,
+      lastFailureCode: null,
+    })
     assert.equal('submissionFingerprint' in body.data, false)
+    assert.equal('sourceId' in body.data.ownerNotification, false)
+    assert.equal('leaseUntil' in body.data.ownerNotification, false)
+    assert.equal('providerMessageId' in body.data.ownerNotification, false)
+    assert.equal('id' in body.data.ownerNotification, false)
     assert.deepEqual(calls.get, [inquiryId])
   })
 
