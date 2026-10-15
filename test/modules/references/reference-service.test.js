@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { createHash } from 'node:crypto'
 import { describe, it } from 'node:test'
 
 import mongoose from 'mongoose'
@@ -91,7 +92,143 @@ function createServiceHarness(existingReference = null) {
   }
 }
 
+function submissionInput(overrides = {}) {
+  return {
+    name: 'James Smith',
+    email: 'james@example.com',
+    company: 'SuperSauced',
+    position: 'Founder',
+    testimonial: 'Vadim turns ideas into reliable products.',
+    ratings: { overall: 5, technical: 5, communication: 5 },
+    turnstileToken: 'verified-turnstile-token',
+    website: '',
+    ...overrides,
+  }
+}
+
+function createSubmissionHarness({ duplicate = false, ownedReference = null } = {}) {
+  const state = {
+    saved: [],
+    existsFilters: [],
+    ownershipFilters: [],
+    deletedOwnershipFilters: [],
+    verificationCalls: [],
+  }
+
+  function ReferenceModel(values) {
+    const reference = new Reference({
+      _id: new mongoose.Types.ObjectId(referenceId),
+      createdAt: now,
+      updatedAt: now,
+      ...values,
+    })
+    reference.save = async () => {
+      await reference.validate()
+      state.saved.push(reference)
+      return reference
+    }
+    return reference
+  }
+
+  ReferenceModel.exists = async (filter) => {
+    state.existsFilters.push(filter)
+    return duplicate ? { _id: referenceId } : null
+  }
+  ReferenceModel.findOne = async (filter) => {
+    state.ownershipFilters.push(filter)
+    return ownedReference
+  }
+  ReferenceModel.findOneAndDelete = async (filter) => {
+    state.deletedOwnershipFilters.push(filter)
+    return ownedReference
+  }
+
+  const antiSpamService = {
+    async verifyReferenceSubmission(input) {
+      state.verificationCalls.push(input)
+    },
+  }
+  const managementToken = 'm'.repeat(43)
+  const service = createReferenceService({
+    referenceModel: ReferenceModel,
+    antiSpamService,
+    now: () => now,
+    createManagementToken: () => managementToken,
+  })
+
+  return { service, state, managementToken }
+}
+
 describe('Reference service', () => {
+  it('verifies and stores every accepted submission as pending with only a token hash', async () => {
+    const { service, state, managementToken } = createSubmissionHarness()
+
+    const result = await service.submitReference(submissionInput(), { remoteIp: '203.0.113.10' })
+
+    assert.equal(result.managementToken, managementToken)
+    assert.deepEqual(state.verificationCalls, [
+      { token: 'verified-turnstile-token', remoteIp: '203.0.113.10' },
+    ])
+    assert.equal(state.saved.length, 1)
+    assert.equal(result.reference.status, 'pending')
+    assert.equal(result.reference.originalTestimonial, submissionInput().testimonial)
+    assert.equal(result.reference.testimonial, submissionInput().testimonial)
+    assert.equal(result.reference.normalizedEmail, 'james@example.com')
+    assert.equal(
+      result.reference.managementTokenHash,
+      createHash('sha256').update(managementToken).digest('hex'),
+    )
+    assert.equal(result.reference.managementTokenHash.includes(managementToken), false)
+    assert.deepEqual(state.existsFilters[0], {
+      normalizedEmail: 'james@example.com',
+      originalTestimonial: submissionInput().testimonial,
+      createdAt: { $gte: new Date(now.getTime() - 24 * 60 * 60 * 1_000) },
+    })
+  })
+
+  it('rejects a recent duplicate without creating another document', async () => {
+    const { service, state } = createSubmissionHarness({ duplicate: true })
+
+    await assert.rejects(
+      service.submitReference(submissionInput()),
+      (error) => error.status === 409 && error.message.includes('already submitted'),
+    )
+    assert.equal(state.saved.length, 0)
+  })
+
+  it('retrieves and deletes an owned submission by the management-token hash', async () => {
+    const ownedReference = referenceDocument()
+    const { service, state, managementToken } = createSubmissionHarness({ ownedReference })
+    const expectedHash = createHash('sha256').update(managementToken).digest('hex')
+
+    assert.equal(await service.getOwnedReference(referenceId, managementToken), ownedReference)
+    await service.deleteOwnedReference(referenceId, managementToken)
+
+    assert.deepEqual(state.ownershipFilters, [
+      { _id: referenceId, managementTokenHash: expectedHash },
+    ])
+    assert.deepEqual(state.deletedOwnershipFilters, [
+      { _id: referenceId, managementTokenHash: expectedHash },
+    ])
+  })
+
+  it('hides malformed and unknown ownership credentials behind the same 404', async () => {
+    const missing = createSubmissionHarness()
+
+    await assert.rejects(
+      missing.service.getOwnedReference(referenceId, 'invalid'),
+      (error) => error.status === 404 && error.message === 'Reference submission not found',
+    )
+    await assert.rejects(
+      missing.service.getOwnedReference(referenceId, 'm'.repeat(43)),
+      (error) => error.status === 404 && error.message === 'Reference submission not found',
+    )
+    await assert.rejects(
+      missing.service.deleteOwnedReference(referenceId, 'm'.repeat(43)),
+      (error) => error.status === 404 && error.message === 'Reference submission not found',
+    )
+  })
+
   it('edits the public testimonial while preserving the original', async () => {
     const reference = referenceDocument()
     const { service } = createServiceHarness(reference)

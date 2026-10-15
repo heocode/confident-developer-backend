@@ -43,6 +43,7 @@ The React, TypeScript, and Vite frontend lives in a separate repository. Do not 
 - `src/config`: environment and database configuration.
 - `src/coursework`: frozen Assignment 2 compatibility models, controllers, routers, and supporting utilities.
 - `src/modules`: production feature modules. Keep feature-specific models, services, controllers, routes, validation, and serializers together.
+- `src/modules/anti-spam`: provider-neutral submission verification with the Cloudflare Turnstile adapter.
 - `src/modules/auth`: administrator identity, opaque sessions, cookie policy, authentication service and HTTP delivery, login validation, safe admin serialization, and session middleware.
 - `src/modules/github`: cached GitHub portfolio statistics, the provider-neutral refresh service, GitHub REST adapter, public snapshot delivery, and protected manual refresh.
 - `src/modules/projects`: the production Projects module. Its shared `PortfolioProject` model is at the module root and protected write behavior is under `admin`.
@@ -204,7 +205,10 @@ Current Reference decisions:
 - Admin reads and moderation are available at `/api/v1/admin/references`, `/:id`, and `/:id/moderation`. Admin editing currently permits only the public testimonial and display order; editing testimonial text preserves `originalTestimonial` and records `editedAt` without exposing an edited marker publicly.
 - Public reads are available at `GET /api/v1/references` with page-based pagination. They select only approved references, sort by display order, approval time, and `_id`, and expose neither private email nor moderation and persistence metadata.
 - Successful public reference lists use a 30-second shared-cache lifetime without stale-while-revalidate so moderation removal has a bounded cache delay. Validation and other error responses are not cacheable; all admin responses remain `private, no-store`.
-- Public reference submission remains unavailable until the next implementation stage adds strict input normalization, a dedicated limiter, Turnstile verification, honeypot and duplicate controls, and ownership-token delivery. Do not expose an unprotected submission route in the interim.
+- Public submission is available at `POST /api/v1/references`; submitter-owned status and deletion are available at `GET /api/v1/references/submissions/:id` and `DELETE /api/v1/references/:id/submission`. Submission and deletion require an exact trusted `Origin`; all three ownership responses are `private, no-store`.
+- Submission bodies are strict, normalized, field-limited, link-free, and include a hidden honeypot plus a Turnstile token. Three ratings must be integers from 1 to 5. A dedicated in-memory limiter permits five submission attempts per IP per hour, and identical normalized email/testimonial pairs are rejected for 24 hours. Revisit the limiter store before horizontally scaling the API.
+- Turnstile verification is provider-isolated under `src/modules/anti-spam`. Production verifies the expected frontend hostname and `reference_submit` action and refuses Cloudflare's official test secrets; non-production may use those test secrets without owning a domain. Verification failures reject before persistence, while every accepted record is created as `pending`; automated checks never assign moderation state `rejected`.
+- A successful submission returns a 256-bit management token exactly once. Only its SHA-256 hash is stored, and subsequent ownership calls supply the raw value through `X-Reference-Management-Token`. Missing, malformed, or incorrect ownership credentials are indistinguishable from a missing record. Raw IP addresses are never persisted.
 
 Current Site Profile and resume decisions:
 

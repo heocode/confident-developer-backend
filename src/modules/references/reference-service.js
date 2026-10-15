@@ -1,6 +1,19 @@
+import { createHash, randomBytes } from 'node:crypto'
+
 import createError from 'http-errors'
 
 import { Reference } from './reference.js'
+
+const DUPLICATE_WINDOW_MS = 24 * 60 * 60 * 1_000
+const MANAGEMENT_TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/
+
+function defaultCreateManagementToken() {
+  return randomBytes(32).toString('base64url')
+}
+
+function hashManagementToken(token) {
+  return createHash('sha256').update(token).digest('hex')
+}
 
 function applySelection(query, fields) {
   return typeof query?.select === 'function' ? query.select(fields) : query
@@ -13,7 +26,12 @@ function clearModerationDecision(reference) {
   reference.rejectedAt = undefined
 }
 
-export function createReferenceService({ referenceModel = Reference, now = () => new Date() } = {}) {
+export function createReferenceService({
+  referenceModel = Reference,
+  antiSpamService,
+  now = () => new Date(),
+  createManagementToken = defaultCreateManagementToken,
+} = {}) {
   async function findAdminReference(referenceId) {
     const query = referenceModel.findById(referenceId)
     const reference = await applySelection(query, '+normalizedEmail')
@@ -22,7 +40,73 @@ export function createReferenceService({ referenceModel = Reference, now = () =>
     return reference
   }
 
+  async function findOwnedReference(referenceId, managementToken) {
+    if (!MANAGEMENT_TOKEN_PATTERN.test(managementToken ?? '')) {
+      throw createError(404, 'Reference submission not found')
+    }
+
+    const reference = await referenceModel.findOne({
+      _id: referenceId,
+      managementTokenHash: hashManagementToken(managementToken),
+    })
+    if (!reference) throw createError(404, 'Reference submission not found')
+    return reference
+  }
+
   return {
+    async submitReference(input, { remoteIp } = {}) {
+      const { turnstileToken } = input
+      const submission = {
+        name: input.name,
+        email: input.email,
+        company: input.company,
+        position: input.position,
+        testimonial: input.testimonial,
+        ratings: input.ratings,
+      }
+      if (!antiSpamService) throw createError(503, 'Submission verification is temporarily unavailable')
+
+      await antiSpamService.verifyReferenceSubmission({ token: turnstileToken, remoteIp })
+
+      const duplicateSince = new Date(now().getTime() - DUPLICATE_WINDOW_MS)
+      const duplicate = await referenceModel.exists({
+        normalizedEmail: submission.email,
+        originalTestimonial: submission.testimonial,
+        createdAt: { $gte: duplicateSince },
+      })
+      if (duplicate) throw createError(409, 'This reference was already submitted recently')
+
+      const managementToken = createManagementToken()
+      const reference = new referenceModel({
+        name: submission.name,
+        normalizedEmail: submission.email,
+        company: submission.company,
+        position: submission.position,
+        originalTestimonial: submission.testimonial,
+        testimonial: submission.testimonial,
+        ratings: submission.ratings,
+        status: 'pending',
+        managementTokenHash: hashManagementToken(managementToken),
+      })
+      await reference.save()
+
+      return { reference, managementToken }
+    },
+
+    getOwnedReference: findOwnedReference,
+
+    async deleteOwnedReference(referenceId, managementToken) {
+      if (!MANAGEMENT_TOKEN_PATTERN.test(managementToken ?? '')) {
+        throw createError(404, 'Reference submission not found')
+      }
+
+      const reference = await referenceModel.findOneAndDelete({
+        _id: referenceId,
+        managementTokenHash: hashManagementToken(managementToken),
+      })
+      if (!reference) throw createError(404, 'Reference submission not found')
+    },
+
     async listAdminReferences({ status, page, limit }) {
       const filter = status ? { status } : {}
       const skip = (page - 1) * limit

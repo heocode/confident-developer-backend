@@ -17,6 +17,7 @@ const rawEnvironmentSchema = z
     CLOUDINARY_API_SECRET: z.string().optional(),
     GITHUB_USERNAME: z.string().optional(),
     GITHUB_TOKEN: z.string().optional(),
+    TURNSTILE_SECRET_KEY: z.string().optional(),
   })
   .passthrough()
 
@@ -106,6 +107,30 @@ function parseGitHubConfiguration(raw) {
   return Object.freeze({ username: username.toLowerCase(), token: token || undefined })
 }
 
+const turnstileTestSecrets = new Set([
+  '1x0000000000000000000000000000000AA',
+  '2x0000000000000000000000000000000AA',
+  '3x0000000000000000000000000000000AA',
+])
+
+function parseTurnstileConfiguration(raw, clientOrigins) {
+  const secretKey = raw.TURNSTILE_SECRET_KEY?.trim()
+  if (!secretKey) return null
+
+  const testMode = turnstileTestSecrets.has(secretKey)
+  if (raw.NODE_ENV === 'production' && testMode) {
+    throw new Error('Cloudflare Turnstile test credentials cannot be used in production')
+  }
+
+  return Object.freeze({
+    secretKey,
+    testMode,
+    expectedHostnames: Object.freeze([
+      ...new Set(clientOrigins.map((origin) => new URL(origin).hostname)),
+    ]),
+  })
+}
+
 export function getPort(value) {
   if (value === undefined || value === '') {
     return DEFAULT_PORT
@@ -130,14 +155,17 @@ export function loadEnvironment(source = process.env) {
 
   const raw = parsed.data
 
+  const clientOrigins = Object.freeze(parseOrigins(raw.CLIENT_ORIGINS ?? raw.CLIENT_ORIGIN, raw.NODE_ENV))
+
   return Object.freeze({
     nodeEnv: raw.NODE_ENV,
     port: getPort(raw.PORT),
     mongodbUri: raw.MONGODB_URI,
-    clientOrigins: Object.freeze(parseOrigins(raw.CLIENT_ORIGINS ?? raw.CLIENT_ORIGIN, raw.NODE_ENV)),
+    clientOrigins,
     trustProxy: parseTrustProxy(raw.TRUST_PROXY),
     enableCourseworkApi: parseBoolean(raw.ENABLE_COURSEWORK_API, 'ENABLE_COURSEWORK_API'),
     cloudinary: parseCloudinaryConfiguration(raw),
     github: parseGitHubConfiguration(raw),
+    turnstile: parseTurnstileConfiguration(raw, clientOrigins),
   })
 }

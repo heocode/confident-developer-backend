@@ -27,3 +27,23 @@ export function serializePublicReference(reference) {
     publishedAt: serializeDate(source.approvedAt),
   }
 }
+
+export function serializeOwnedReference(reference) {
+  const source = sourceOf(reference)
+
+  return {
+    id: serializeId(source._id ?? source.id),
+    name: source.name,
+    company: source.company,
+    position: source.position,
+    testimonial: source.testimonial,
+    ratings: {
+      overall: source.ratings.overall,
+      technical: source.ratings.technical,
+      communication: source.ratings.communication,
+    },
+    status: source.status,
+    submittedAt: serializeDate(source.createdAt),
+    approvedAt: source.approvedAt ? serializeDate(source.approvedAt) : null,
+  }
+}

@@ -14,6 +14,8 @@ import { serviceRouter } from './coursework/routes/service-routes.js'
 import { userRouter } from './coursework/routes/user-routes.js'
 import { createApiRateLimiter } from './middleware/api-rate-limiter.js'
 import { errorHandler } from './middleware/error-handler.js'
+import { createAntiSpamService } from './modules/anti-spam/anti-spam-service.js'
+import { createCloudflareTurnstileProvider } from './modules/anti-spam/providers/cloudflare-turnstile-provider.js'
 import { createAuthService } from './modules/auth/auth-service.js'
 import { createGitHubService } from './modules/github/github-service.js'
 import { createGitHubRestProvider } from './modules/github/providers/github-rest-provider.js'
@@ -34,6 +36,7 @@ export function createApp({
   loginRateLimitOptions,
   profileLikeRateLimitOptions,
   profileViewRateLimitOptions,
+  referenceSubmissionRateLimitOptions,
   authService = createAuthService(),
   githubProvider = createGitHubRestProvider(environment.github),
   githubService = createGitHubService({ githubProvider }),
@@ -41,7 +44,9 @@ export function createApp({
   mediaService = createMediaService({ mediaProvider }),
   profileService = createProfileService({ mediaService }),
   profilePostService = createProfilePostService(),
-  referenceService = createReferenceService(),
+  turnstileProvider = createCloudflareTurnstileProvider(environment.turnstile),
+  antiSpamService = createAntiSpamService({ turnstileProvider }),
+  referenceService = createReferenceService({ antiSpamService }),
   projectService = createAdminProjectService(),
   publicProjectService = createPublicProjectService(),
   serviceService = createAdminServiceService(),
@@ -108,6 +113,7 @@ export function createApp({
       loginRateLimitOptions,
       profileLikeRateLimitOptions,
       profileViewRateLimitOptions,
+      referenceSubmissionRateLimitOptions,
     }),
   )
 

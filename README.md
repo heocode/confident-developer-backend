@@ -20,7 +20,8 @@ REST API for the Confident Developer portfolio and COMP229 Assignment 2.
 5. Keep `ENABLE_COURSEWORK_API=false` for production development.
 6. Add all three `CLOUDINARY_*` values when testing media uploads; never commit them.
 7. Set `GITHUB_USERNAME` to the public portfolio account. `GITHUB_TOKEN` is optional and must remain secret.
-8. Start the development server with `npm run dev`.
+8. Set `TURNSTILE_SECRET_KEY` when testing reference submissions. Cloudflare's official test secret is suitable locally but is rejected in production.
+9. Start the development server with `npm run dev`.
 
 The API listens on port `3000` by default. Check it at `GET /api/health`.
 
@@ -93,6 +94,15 @@ The public resume download endpoint is:
 - `GET /api/v1/profile/resume`
 
 It returns a short-cacheable redirect to the current managed PDF attachment on the media CDN. The frontend should link to this stable relative endpoint rather than storing or constructing a Cloudinary URL.
+
+Public reference endpoints are:
+
+- `GET /api/v1/references`
+- `POST /api/v1/references`
+- `GET /api/v1/references/submissions/:id`
+- `DELETE /api/v1/references/:id/submission`
+
+Only approved references appear in the public list. New submissions always begin as pending and require normalized profile fields, three ratings, the empty honeypot field `website`, and a valid Turnstile token. The frontend must retain the one-time `managementToken` returned by POST and send it as `X-Reference-Management-Token` when retrieving or deleting that submission. Submission and deletion also require the configured frontend `Origin`; private email is never returned by public endpoints.
 
 Admin authentication endpoints are:
 

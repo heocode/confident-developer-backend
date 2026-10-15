@@ -36,6 +36,7 @@ export function createV1Router({
   loginRateLimitOptions,
   profileLikeRateLimitOptions,
   profileViewRateLimitOptions,
+  referenceSubmissionRateLimitOptions,
 }) {
   const router = Router()
 
@@ -65,7 +66,14 @@ export function createV1Router({
     '/projects',
     createPublicProjectRouter({ projectService: publicProjectService, mediaService }),
   )
-  router.use('/references', createPublicReferenceRouter({ referenceService }))
+  router.use(
+    '/references',
+    createPublicReferenceRouter({
+      referenceService,
+      environment,
+      submissionRateLimitOptions: referenceSubmissionRateLimitOptions,
+    }),
+  )
   router.use('/services', createPublicServiceRouter({ serviceService: publicServiceService }))
   router.use(
     '/admin',

@@ -16,6 +16,7 @@ describe('environment configuration', () => {
       enableCourseworkApi: false,
       cloudinary: null,
       github: null,
+      turnstile: null,
     })
   })
 
@@ -80,6 +81,41 @@ describe('environment configuration', () => {
     })
     assert.throws(() => loadEnvironment({ GITHUB_TOKEN: 'token-without-owner' }), /GITHUB_USERNAME/)
     assert.throws(() => loadEnvironment({ GITHUB_USERNAME: '-invalid-' }), /GITHUB_USERNAME is invalid/)
+  })
+
+  it('derives Turnstile hostnames and confines official test credentials to non-production', () => {
+    const testSecret = '1x0000000000000000000000000000000AA'
+    const development = loadEnvironment({
+      CLIENT_ORIGINS: 'http://localhost:5173,https://preview.example',
+      TURNSTILE_SECRET_KEY: testSecret,
+    })
+
+    assert.deepEqual(development.turnstile, {
+      secretKey: testSecret,
+      testMode: true,
+      expectedHostnames: ['localhost', 'preview.example'],
+    })
+
+    const production = loadEnvironment({
+      NODE_ENV: 'production',
+      CLIENT_ORIGINS: 'https://portfolio.example',
+      TURNSTILE_SECRET_KEY: 'production-secret',
+    })
+    assert.deepEqual(production.turnstile, {
+      secretKey: 'production-secret',
+      testMode: false,
+      expectedHostnames: ['portfolio.example'],
+    })
+
+    assert.throws(
+      () =>
+        loadEnvironment({
+          NODE_ENV: 'production',
+          CLIENT_ORIGINS: 'https://portfolio.example',
+          TURNSTILE_SECRET_KEY: testSecret,
+        }),
+      /test credentials cannot be used in production/,
+    )
   })
 
   it('rejects missing or unsafe production settings', () => {

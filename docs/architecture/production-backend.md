@@ -161,11 +161,21 @@ POST   /api/v1/profile-post/view
 
 Their strict request bodies contain only the currently rendered `revision`. They require an exact trusted `Origin`, have dedicated in-memory rate limits, and always return `private, no-store`. A stale revision returns `409` instead of applying an interaction to replacement content.
 
-Remaining planned routes:
+Implemented reference submission and ownership routes:
 
 ```text
 POST   /api/v1/references
+GET    /api/v1/references/submissions/:id
 DELETE /api/v1/references/:id/submission
+```
+
+The POST and DELETE routes require an exact trusted frontend `Origin`. The submit route uses strict normalized fields, a honeypot, a five-attempts-per-hour IP limiter, 24-hour duplicate detection, and server-side Cloudflare Turnstile verification. Production verifies the expected hostname and `reference_submit` action and cannot start with official Turnstile test credentials. Every accepted record starts as `pending`; failed automated checks are rejected before persistence rather than being stored with a moderation decision.
+
+Submission returns a random 256-bit management token once. Only its SHA-256 hash is stored, and the status and deletion routes require the raw token in `X-Reference-Management-Token`. Ownership failures intentionally return the same `404` as an unknown record. These responses are `private, no-store`, and no raw IP address is persisted.
+
+Remaining planned public write route:
+
+```text
 POST   /api/v1/contact
 ```
 
@@ -173,7 +183,7 @@ Reference submissions always start in `pending` state. A submitter's email is us
 
 > Your email is used only to verify and manage your reference. It will never be displayed on the site.
 
-A reference deletion-management token is returned only at submission time; only its hash is stored. Contact inquiries and reference submissions are rate-limited, size-limited, validated, and protected by a configurable anti-spam challenge before launch.
+Contact inquiries will be rate-limited, size-limited, validated, and protected by a configurable anti-spam challenge before launch.
 
 Profile Post likes and views represent recorded interactions, not decorative seed values. A 256-bit anonymous first-party visitor identifier is stored in a host-only `HttpOnly`, `SameSite=Lax` cookie that becomes `Secure` in production; only its SHA-256 hash is persisted. Likes are idempotent per revision and visitor. Views are deduplicated per revision and visitor for 24 hours. Raw IP addresses are not persisted for these interactions.
 
@@ -328,7 +338,11 @@ References use the explicit `portfolio_references` collection. They store the au
 
 Protected moderation is available through `/api/v1/admin/references`, `/:id`, and `/:id/moderation`. Moderation uses explicit `approve`, `reject`, and `reopen` actions. Rejection requires an allowlisted private reason; `other` additionally requires a private note. Admin editing currently changes only the displayed testimonial and display order. The original testimonial is preserved, and no edited marker is exposed publicly.
 
-Public serializers expose only approved content and never expose email, original text, management-token hashes, moderation state, rejection details, or persistence internals. Public submission is deliberately not mounted until its Turnstile, dedicated rate-limit, honeypot, duplicate, normalization, and ownership controls are implemented.
+Public serializers expose only approved content and never expose email, original text, management-token hashes, moderation state, rejection details, or persistence internals.
+
+Public submission is mounted with strict normalized input, three required ratings, URL rejection, a honeypot, a dedicated five-per-hour IP limiter, 24-hour duplicate detection, and server-side Turnstile verification. Production validates both hostname and the `reference_submit` action; official test credentials are non-production only. Automated failures do not create records, and all accepted submissions begin as `pending` for human moderation.
+
+The submission response returns a random 256-bit management token once, while the document stores only its SHA-256 hash. `GET /api/v1/references/submissions/:id` and `DELETE /api/v1/references/:id/submission` require that token in `X-Reference-Management-Token`; invalid ownership is intentionally indistinguishable from a missing record. Submission and ownership responses are `private, no-store`, submitter email remains private, and raw IP addresses are not persisted.
 
 ### ContactInquiry
 

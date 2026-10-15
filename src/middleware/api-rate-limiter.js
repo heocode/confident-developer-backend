@@ -1,6 +1,7 @@
 import { rateLimit } from 'express-rate-limit'
 
 const FIFTEEN_MINUTES = 15 * 60 * 1_000
+const ONE_HOUR = 60 * 60 * 1_000
 
 export function createApiRateLimiter({ limit = 300, windowMs = FIFTEEN_MINUTES } = {}) {
   return rateLimit({
@@ -50,5 +51,12 @@ export function createProfileViewRateLimiter({ limit = 60, windowMs = FIFTEEN_MI
   return createInteractionRateLimiter(
     { limit, windowMs },
     'Too many profile post views. Please try again later.',
+  )
+}
+
+export function createReferenceSubmissionRateLimiter({ limit = 5, windowMs = ONE_HOUR } = {}) {
+  return createInteractionRateLimiter(
+    { limit, windowMs },
+    'Too many reference submissions. Please try again later.',
   )
 }
