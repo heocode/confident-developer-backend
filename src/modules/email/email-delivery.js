@@ -3,6 +3,7 @@ import mongoose from 'mongoose'
 import {
   emailDeliveryFailureCodes,
   emailDeliveryKinds,
+  emailRecipientStatuses,
   emailDeliveryStatuses,
 } from './email-delivery-values.js'
 
@@ -45,6 +46,25 @@ const emailDeliverySchema = new mongoose.Schema(
     acceptedAt: { type: Date },
     failedAt: { type: Date },
     lastFailureCode: { type: String, enum: emailDeliveryFailureCodes },
+    recipientStatus: {
+      type: String,
+      enum: emailRecipientStatuses,
+      default: 'unknown',
+      required: true,
+    },
+    delayedAt: { type: Date },
+    deliveredAt: { type: Date },
+    bouncedAt: { type: Date },
+    complainedAt: { type: Date },
+    lastProviderEventAt: { type: Date },
+    manualRetryCount: {
+      type: Number,
+      default: 0,
+      min: 0,
+      required: true,
+      validate: { validator: Number.isInteger, message: 'Manual retry count must be an integer' },
+    },
+    lastManualRetryAt: { type: Date },
     providerMessageId: {
       type: String,
       trim: true,
@@ -66,6 +86,23 @@ emailDeliverySchema.pre('validate', function validateDeliveryState() {
   const hasLease = hasDate(this.leaseUntil)
   const isAccepted = hasDate(this.acceptedAt)
   const isFailed = hasDate(this.failedAt)
+  const outcomeDateByStatus = {
+    delayed: this.delayedAt,
+    delivered: this.deliveredAt,
+    bounced: this.bouncedAt,
+    complained: this.complainedAt,
+  }
+
+  if (this.recipientStatus !== 'unknown' && !hasDate(outcomeDateByStatus[this.recipientStatus])) {
+    this.invalidate(this.recipientStatus === 'delayed' ? 'delayedAt' : `${this.recipientStatus}At`,
+      `Recipient status ${this.recipientStatus} requires its event date`)
+  }
+  if (this.manualRetryCount > 0 && !hasDate(this.lastManualRetryAt)) {
+    this.invalidate('lastManualRetryAt', 'Manual retries require a retry date')
+  }
+  if (this.manualRetryCount === 0 && hasDate(this.lastManualRetryAt)) {
+    this.invalidate('manualRetryCount', 'A retry date requires a manual retry')
+  }
 
   if (this.status === 'pending') {
     if (!hasNextAttempt) this.invalidate('nextAttemptAt', 'Pending delivery requires a next attempt date')
@@ -105,6 +142,10 @@ emailDeliverySchema.pre('validate', function validateDeliveryState() {
 })
 
 emailDeliverySchema.index({ kind: 1, sourceId: 1 }, { unique: true })
+emailDeliverySchema.index(
+  { providerMessageId: 1 },
+  { unique: true, sparse: true },
+)
 emailDeliverySchema.index({ status: 1, nextAttemptAt: 1, createdAt: 1, _id: 1 })
 emailDeliverySchema.index({ status: 1, leaseUntil: 1 })
 

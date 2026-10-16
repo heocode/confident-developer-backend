@@ -8,6 +8,10 @@ const objectIdSchema = z.string().trim().regex(/^[a-f\d]{24}$/i, 'Invalid resour
 export const adminContactEmptyQuerySchema = z.strictObject({})
 
 export const adminContactIdParamsSchema = z.strictObject({ id: objectIdSchema })
+export const adminContactReplyIdParamsSchema = z.strictObject({
+  id: objectIdSchema,
+  replyId: objectIdSchema,
+})
 
 export const adminContactListQuerySchema = z.strictObject({
   page: z.coerce.number().int().min(1).default(1),
@@ -39,3 +43,5 @@ export const createAdminContactReplyHeadersSchema = z
     'idempotency-key': z.string().uuid(),
   })
   .transform((headers) => ({ idempotencyKey: headers['idempotency-key'] }))
+
+export const retryAdminEmailHeadersSchema = createAdminContactReplyHeadersSchema

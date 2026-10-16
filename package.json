@@ -45,6 +45,7 @@
     "http-errors": "^2.0.1",
     "mongoose": "^9.11.0",
     "morgan": "^1.12.1",
+    "svix": "^2.8.0",
     "zod": "^4.6.5"
   },
   "devDependencies": {

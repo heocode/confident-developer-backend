@@ -55,6 +55,7 @@ describe('contact owner notification handler', () => {
     assert.equal(requests[0].from, 'Confident Developer <contact@example.com>')
     assert.equal(requests[0].to, 'owner@example.com')
     assert.equal(requests[0].idempotencyKey, `contact-owner-notification/${deliveryId}`)
+    assert.deepEqual(requests[0].tags, [{ name: 'delivery_id', value: deliveryId.toString() }])
     assert.match(requests[0].text, /ada@example.com/)
     assert.match(requests[0].text, /reliable API/)
   })

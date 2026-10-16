@@ -21,6 +21,7 @@ const rawEnvironmentSchema = z
     RESEND_API_KEY: z.string().optional(),
     RESEND_FROM_EMAIL: z.string().optional(),
     CONTACT_NOTIFICATION_TO_EMAIL: z.string().optional(),
+    RESEND_WEBHOOK_SECRET: z.string().optional(),
   })
   .passthrough()
 
@@ -166,6 +167,15 @@ function parseEmailConfiguration(raw) {
   })
 }
 
+function parseResendWebhookSecret(raw) {
+  const secret = raw.RESEND_WEBHOOK_SECRET?.trim()
+  if (!secret) return null
+  if (!/^whsec_[A-Za-z0-9+/=_-]{16,500}$/.test(secret)) {
+    throw new Error('RESEND_WEBHOOK_SECRET is invalid')
+  }
+  return secret
+}
+
 export function getPort(value) {
   if (value === undefined || value === '') {
     return DEFAULT_PORT
@@ -203,5 +213,6 @@ export function loadEnvironment(source = process.env) {
     github: parseGitHubConfiguration(raw),
     turnstile: parseTurnstileConfiguration(raw, clientOrigins),
     email: parseEmailConfiguration(raw),
+    resendWebhookSecret: parseResendWebhookSecret(raw),
   })
 }

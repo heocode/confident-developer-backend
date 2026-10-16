@@ -4,7 +4,9 @@ import createError from 'http-errors'
 import mongoose from 'mongoose'
 
 import { createEmailDeliveryService } from '../email/email-delivery-service.js'
+import { EmailDeliveryRetryCommand } from '../email/email-delivery-retry-command.js'
 import { ContactInquiry } from './contact-inquiry.js'
+import { ContactReply } from './contact-reply.js'
 import { createContactReplyService } from './contact-reply-service.js'
 import {
   normalizeContactEmail,
@@ -52,6 +54,8 @@ export function createContactService({
   antiSpamService,
   emailDeliveryService = createEmailDeliveryService(),
   contactReplyService = createContactReplyService({ emailDeliveryService }),
+  replyModel = ContactReply,
+  retryCommandModel = EmailDeliveryRetryCommand,
   runInTransaction = runInMongoTransaction,
   now = () => new Date(),
 } = {}) {
@@ -101,6 +105,54 @@ export function createContactService({
     )
 
     return inquiry ?? findAdminInquiry(inquiryId)
+  }
+
+  async function retryDelivery(inquiryId, idempotencyKey, findDelivery, validateSource) {
+    const retriedAt = now()
+    try {
+      return await runInTransaction(async (session) => {
+        const inquiry = await useSession(inquiryModel.findById(inquiryId), session)
+        if (!inquiry) throw createError(404, 'Contact inquiry not found')
+        if (inquiry.status === 'archived') {
+          throw createError(409, 'Archived contact inquiry must be restored before retrying email')
+        }
+
+        if (validateSource) await validateSource(session)
+        const delivery = await findDelivery(session)
+        if (!delivery) throw createError(404, 'Email delivery not found')
+
+        const fingerprint = createHash('sha256')
+          .update(`${idOf(delivery)}\0${idempotencyKey}`)
+          .digest('hex')
+        const replay = await useSession(
+          retryCommandModel.findOne({ commandFingerprint: fingerprint }),
+          session,
+        )
+        if (replay) return delivery
+        if (delivery.status !== 'failed') throw createError(409, 'Only failed email delivery can be retried')
+        if (delivery.lastFailureCode === 'source-missing') {
+          throw createError(409, 'Email delivery source is no longer available')
+        }
+
+        const command = new retryCommandModel({
+          deliveryId: idOf(delivery),
+          commandFingerprint: fingerprint,
+        })
+        await command.save({ session })
+        const requeued = await emailDeliveryService.requeueFailedDelivery(
+          idOf(delivery),
+          retriedAt,
+          { session },
+        )
+        if (!requeued) throw createError(409, 'Email delivery state changed before retry')
+        return requeued
+      })
+    } catch (error) {
+      if (error?.code !== 11_000) throw error
+      const delivery = await findDelivery()
+      if (delivery) return delivery
+      throw error
+    }
   }
 
   return {
@@ -177,6 +229,26 @@ export function createContactService({
 
     queueAdminReply(inquiryId, input, idempotencyKey) {
       return contactReplyService.queueReply(inquiryId, input, idempotencyKey)
+    },
+
+    retryOwnerNotification(inquiryId, idempotencyKey) {
+      return retryDelivery(
+        inquiryId,
+        idempotencyKey,
+        (session) => emailDeliveryService.getContactOwnerNotification(inquiryId, { session }),
+      )
+    },
+
+    retryAdminReply(inquiryId, replyId, idempotencyKey) {
+      return retryDelivery(
+        inquiryId,
+        idempotencyKey,
+        (session) => emailDeliveryService.getContactAdminReplyDelivery(replyId, { session }),
+        async (session) => {
+          const reply = await useSession(replyModel.findOne({ _id: replyId, inquiryId }), session)
+          if (!reply) throw createError(404, 'Contact reply not found')
+        },
+      )
     },
 
     async markInquiryRead(inquiryId) {

@@ -18,6 +18,7 @@ describe('environment configuration', () => {
       github: null,
       turnstile: null,
       email: null,
+      resendWebhookSecret: null,
     })
   })
 
@@ -149,6 +150,17 @@ describe('environment configuration', () => {
           CONTACT_NOTIFICATION_TO_EMAIL: 'not-an-email',
         }),
       /CONTACT_NOTIFICATION_TO_EMAIL must be a valid email address/,
+    )
+  })
+
+  it('loads and validates an optional Resend webhook secret', () => {
+    assert.equal(
+      loadEnvironment({ RESEND_WEBHOOK_SECRET: 'whsec_1234567890abcdefghijkl' }).resendWebhookSecret,
+      'whsec_1234567890abcdefghijkl',
+    )
+    assert.throws(
+      () => loadEnvironment({ RESEND_WEBHOOK_SECRET: 'invalid' }),
+      /RESEND_WEBHOOK_SECRET is invalid/,
     )
   })
 

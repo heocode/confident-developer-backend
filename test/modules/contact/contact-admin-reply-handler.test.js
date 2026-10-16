@@ -58,6 +58,7 @@ describe('contact admin reply handler', () => {
     assert.equal(requests[0].replyTo, 'owner@example.com')
     assert.equal(requests[0].from, 'Vadim Iskakov <contact@example.com>')
     assert.equal(requests[0].idempotencyKey, `contact-admin-reply/${deliveryId}`)
+    assert.deepEqual(requests[0].tags, [{ name: 'delivery_id', value: deliveryId.toString() }])
     assert.deepEqual(acceptances, [[delivery, 'provider-id']])
   })
 

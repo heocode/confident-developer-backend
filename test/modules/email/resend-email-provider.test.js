@@ -11,6 +11,7 @@ const email = {
   subject: 'New inquiry',
   html: '<p>Hello</p>',
   text: 'Hello',
+  tags: [{ name: 'delivery_id', value: '68f120000000000000000001' }],
   idempotencyKey: 'contact-owner-notification/delivery-id',
 }
 
@@ -42,6 +43,7 @@ describe('Resend email provider', () => {
       subject: email.subject,
       html: email.html,
       text: email.text,
+      tags: email.tags,
     })
     assert.ok(requests[0][1].signal instanceof AbortSignal)
   })

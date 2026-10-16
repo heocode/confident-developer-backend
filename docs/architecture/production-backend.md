@@ -193,6 +193,8 @@ GET    /api/v1/admin/inquiries
 GET    /api/v1/admin/inquiries/:id
 PATCH  /api/v1/admin/inquiries/:id/status
 POST   /api/v1/admin/inquiries/:id/replies
+POST   /api/v1/admin/inquiries/:id/owner-notification/retry
+POST   /api/v1/admin/inquiries/:id/replies/:replyId/retry
 DELETE /api/v1/admin/inquiries/:id
 ```
 
@@ -392,6 +394,12 @@ Reply creation, its `contact-admin-reply` outbox envelope, and an initial `new` 
 `EmailDelivery` uses the explicit `email_deliveries` collection as the durable provider-neutral outbox. `contact-owner-notification` points to ContactInquiry and `contact-admin-reply` points to ContactReply. Envelopes store immutable source identity and operational lifecycle metadata only; they do not duplicate contact identity, message content, recipient addresses, or rendered email bodies.
 
 Delivery states are `pending`, `processing`, `accepted`, and `failed`. Attempt counts, scheduling dates, leases, terminal dates, allowlisted failure codes, and the non-selected provider message ID are validated against the state. A unique `kind` plus `sourceId` index permits only one owner notification per inquiry, while separate indexes support due-work claims and expired-lease recovery.
+
+Provider acceptance is distinct from the recipient outcome: `unknown`, `delayed`, `delivered`, `bounced`, or `complained`. Outgoing requests include only the delivery ObjectId as a Resend tag. The signed raw-body webhook at `POST /api/v1/webhooks/resend` uses that tag as a race-safe fallback when an API response is lost, while provider message identity remains private and uniquely indexed.
+
+`EmailDeliveryEvent` deduplicates allowlisted Resend events by provider event ID and expires technical receipts after 30 days. Outcome precedence prevents delayed or delivered events from overwriting bounce or complaint state. A provider event can also reconcile a missing API acceptance and performs the same reply lifecycle transition as the worker.
+
+Failed owner notifications and replies support authenticated, trusted-origin manual retry with UUID command idempotency. `EmailDeliveryRetryCommand` prevents double execution and expires after 30 days. Retry uses a conditional transaction, rejects missing sources and archived inquiries, resets the current automatic-attempt cycle, and never automatically retries bounced or complained mail.
 
 Contact submission creates the inquiry and outbox envelope in one Atlas transaction. Archived-only hard deletion removes both in one transaction. Existing inquiries are deliberately not backfilled. The in-process worker atomically claims due pending or lease-expired processing work, increments the attempt count as a fencing token, and resolves private source content only after a successful claim. A stale worker can no longer finalize a reclaimed attempt.
 

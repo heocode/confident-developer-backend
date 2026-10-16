@@ -13,6 +13,22 @@ export const emailDeliveryStatuses = Object.freeze([
   'failed',
 ])
 
+export const emailRecipientStatuses = Object.freeze([
+  'unknown',
+  'delayed',
+  'delivered',
+  'bounced',
+  'complained',
+])
+
+export const resendDeliveryEventTypes = Object.freeze([
+  'email.sent',
+  'email.delivery_delayed',
+  'email.delivered',
+  'email.bounced',
+  'email.complained',
+])
+
 export const emailDeliveryFailureCodes = Object.freeze([
   'configuration',
   'timeout',

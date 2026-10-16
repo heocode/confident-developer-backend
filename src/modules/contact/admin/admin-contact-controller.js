@@ -2,6 +2,7 @@ import {
   serializeAdminContactInquiry,
   serializeAdminContactListItem,
   serializeAdminContactReply,
+  serializeAdminEmailDelivery,
 } from './admin-contact-serializer.js'
 
 export function createAdminContactController({ contactService }) {
@@ -54,6 +55,31 @@ export function createAdminContactController({ contactService }) {
         success: true,
         message: 'Contact reply queued successfully.',
         data: serializeAdminContactReply(reply),
+      })
+    },
+
+    retryOwnerNotification: async (request, response) => {
+      const delivery = await contactService.retryOwnerNotification(
+        request.validated.params.id,
+        request.validated.headers.idempotencyKey,
+      )
+      response.json({
+        success: true,
+        message: 'Owner notification queued for retry.',
+        data: serializeAdminEmailDelivery(delivery),
+      })
+    },
+
+    retryReply: async (request, response) => {
+      const delivery = await contactService.retryAdminReply(
+        request.validated.params.id,
+        request.validated.params.replyId,
+        request.validated.headers.idempotencyKey,
+      )
+      response.json({
+        success: true,
+        message: 'Contact reply queued for retry.',
+        data: serializeAdminEmailDelivery(delivery),
       })
     },
 

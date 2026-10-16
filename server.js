@@ -11,6 +11,7 @@ import { createContactOwnerNotificationHandler } from './src/modules/contact/con
 import { createContactAdminReplyHandler } from './src/modules/contact/contact-admin-reply-handler.js'
 import { createContactReplyService } from './src/modules/contact/contact-reply-service.js'
 import { createEmailDeliveryService } from './src/modules/email/email-delivery-service.js'
+import { createEmailDeliveryEventService } from './src/modules/email/email-delivery-event-service.js'
 import { createEmailDeliveryWorker } from './src/modules/email/email-delivery-worker.js'
 import {
   contactAdminReplyKind,
@@ -25,6 +26,10 @@ async function startServer() {
 
   const emailDeliveryService = createEmailDeliveryService()
   const contactReplyService = createContactReplyService({ emailDeliveryService })
+  const emailDeliveryEventService = createEmailDeliveryEventService({
+    deliveryService: emailDeliveryService,
+    contactReplyService,
+  })
   let emailDeliveryWorker
 
   if (environment.email) {
@@ -52,7 +57,12 @@ async function startServer() {
   }
 
   const server = createServer(
-    createApp({ environment, emailDeliveryService, contactReplyService }),
+    createApp({
+      environment,
+      emailDeliveryService,
+      contactReplyService,
+      emailDeliveryEventService,
+    }),
   )
 
   server.listen(environment.port, () => {

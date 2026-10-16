@@ -24,7 +24,7 @@ function splitAdminView(value) {
   return { inquiry: sourceOf(value), ownerNotification: null, replies: [] }
 }
 
-function serializeOwnerNotification(delivery, detailed) {
+export function serializeAdminEmailDelivery(delivery, detailed = true) {
   if (!delivery) return null
 
   const notification = {
@@ -36,8 +36,15 @@ function serializeOwnerNotification(delivery, detailed) {
 
   return {
     ...notification,
+    recipientStatus: delivery.recipientStatus ?? 'unknown',
+    manualRetryCount: delivery.manualRetryCount ?? 0,
     lastAttemptAt: serializeDate(delivery.lastAttemptAt),
+    lastManualRetryAt: serializeDate(delivery.lastManualRetryAt),
     acceptedAt: serializeDate(delivery.acceptedAt),
+    delayedAt: serializeDate(delivery.delayedAt),
+    deliveredAt: serializeDate(delivery.deliveredAt),
+    bouncedAt: serializeDate(delivery.bouncedAt),
+    complainedAt: serializeDate(delivery.complainedAt),
     failedAt: serializeDate(delivery.failedAt),
     lastFailureCode: delivery.lastFailureCode ?? null,
   }
@@ -63,7 +70,7 @@ export function serializeAdminContactListItem(inquiry) {
 
   return {
     ...serializeBaseInquiry(view.inquiry),
-    ownerNotification: serializeOwnerNotification(view.ownerNotification, false),
+    ownerNotification: serializeAdminEmailDelivery(view.ownerNotification, false),
   }
 }
 
@@ -73,7 +80,7 @@ export function serializeAdminContactInquiry(inquiry) {
   return {
     ...serializeBaseInquiry(view.inquiry),
     message: view.inquiry.message,
-    ownerNotification: serializeOwnerNotification(view.ownerNotification, true),
+    ownerNotification: serializeAdminEmailDelivery(view.ownerNotification, true),
     replies: view.replies.map(serializeAdminContactReply),
   }
 }
@@ -86,6 +93,6 @@ export function serializeAdminContactReply(value) {
     id: serializeId(reply._id ?? reply.id),
     message: reply.message,
     createdAt: serializeDate(reply.createdAt),
-    delivery: serializeOwnerNotification(delivery, true),
+    delivery: serializeAdminEmailDelivery(delivery, true),
   }
 }

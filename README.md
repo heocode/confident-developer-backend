@@ -126,6 +126,8 @@ Authenticated contact inbox endpoints are:
 - `GET /api/v1/admin/inquiries/:id`
 - `PATCH /api/v1/admin/inquiries/:id/status`
 - `POST /api/v1/admin/inquiries/:id/replies`
+- `POST /api/v1/admin/inquiries/:id/owner-notification/retry`
+- `POST /api/v1/admin/inquiries/:id/replies/:replyId/retry`
 - `DELETE /api/v1/admin/inquiries/:id`
 
 The inbox list supports strict page-based pagination and an optional `new`, `read`, `replied`, or `archived` status filter. Opening detail is read-only; the frontend explicitly sends the `read` action when an inquiry is actually opened. Status actions also support idempotent `archive` and `restore`, while permanent deletion is allowed only after archiving. Email and message are available only through these authenticated representations, and the submission fingerprint is never returned. Admin representations include the allowlisted owner-notification state; historical inquiries without a job return `ownerNotification: null`. Inquiry detail also contains the ordered private history of administrator replies and their delivery state.
@@ -133,6 +135,10 @@ The inbox list supports strict page-based pagination and an optional `new`, `rea
 Creating a reply requires a trusted origin, a strict `{ "message": "..." }` body, and a UUID `Idempotency-Key` header. The reply and its outbox envelope commit in one Atlas transaction and return `201` without waiting for Resend. A newly queued reply marks a new inquiry read; only provider acceptance moves an active inquiry to `replied`. Archived inquiries must be restored before another reply can be queued. Visitor replies go to the configured owner address through `Reply-To` but are not ingested into this API.
 
 When the complete email configuration is present, an in-process worker sends both new-inquiry notifications and administrator replies through Resend and advances jobs through `processing` to `accepted`, retryable `pending`, or terminal `failed`. Without configuration, the worker stays disabled and durable jobs remain pending.
+
+`EmailDelivery` keeps provider acceptance separate from the recipient outcome (`unknown`, `delayed`, `delivered`, `bounced`, or `complained`). A configured `POST /api/v1/webhooks/resend` endpoint verifies the untouched request body with `RESEND_WEBHOOK_SECRET`, deduplicates signed events, and reconciles delivery by private provider identity or a non-personal delivery tag. The admin detail exposes only allowlisted delivery dates and state. Failed jobs other than missing-source failures can be transactionally requeued through the two retry endpoints; both require a UUID `Idempotency-Key`, and archived inquiries must be restored first. Bounce and complaint outcomes are never automatically retried.
+
+To activate delivery outcomes in production, create a Resend webhook for `email.sent`, `email.delivery_delayed`, `email.delivered`, `email.bounced`, and `email.complained`, point it to the deployed `/api/v1/webhooks/resend` URL, and set its `whsec_...` signing secret as `RESEND_WEBHOOK_SECRET`. The route is unavailable when that secret is omitted.
 
 Authenticated project management endpoints are:
 

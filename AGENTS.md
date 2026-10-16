@@ -233,6 +233,9 @@ Current Contact inquiry decisions:
 - Reply emails use a server-owned subject, escaped HTML plus text, the visitor as recipient, and the configured owner notification address as `Reply-To`. Visitor responses arrive in the owner's mailbox and are not ingested by the backend. There are no reply drafts, attachments, client-owned subjects, or edits.
 - Hard-deleting an archived inquiry transactionally deletes its reply history plus owner-notification and reply delivery envelopes.
 - A configured in-process worker sends owner notifications and administrator replies asynchronously through the provider-neutral email adapter.
+- Provider acceptance remains separate from the recipient outcome (`unknown`, `delayed`, `delivered`, `bounced`, or `complained`). Outgoing Resend requests contain a non-personal delivery-ID tag, and `POST /api/v1/webhooks/resend` verifies the raw signed payload before idempotently reconciling allowlisted delivery events.
+- `EmailDeliveryEvent` retains private event receipts for 30 days to deduplicate replayed and out-of-order webhooks. Outcome precedence prevents delivery events from regressing bounce or complaint state; provider events can recover acceptance when the synchronous Resend response was lost.
+- Failed owner notifications and administrator replies have separate protected retry actions requiring a UUID `Idempotency-Key`. Retry is transactional, rejects archived inquiries, missing sources, non-failed jobs, bounce, and complaint outcomes, and records a new manual retry cycle without creating another inquiry or reply.
 
 Current email outbox decisions:
 

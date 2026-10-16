@@ -15,6 +15,20 @@ export function createEmailDeliveryService({
   now = () => new Date(),
 } = {}) {
   return {
+    async findById(deliveryId, { session, includeProviderMessageId = false } = {}) {
+      let query = deliveryModel.findById(deliveryId)
+      if (includeProviderMessageId && typeof query?.select === 'function') {
+        query = query.select('+providerMessageId')
+      }
+      return useSession(query, session)
+    },
+
+    async findByProviderMessageId(providerMessageId, { session } = {}) {
+      return useSession(
+        deliveryModel.findOne({ providerMessageId }).select('+providerMessageId'),
+        session,
+      )
+    },
     async createContactOwnerNotification(sourceId, { session, nextAttemptAt = now() } = {}) {
       const delivery = new deliveryModel({
         kind: contactOwnerNotificationKind,
@@ -68,6 +82,13 @@ export function createEmailDeliveryService({
           kind: contactAdminReplyKind,
           sourceId: { $in: sourceIds },
         }),
+        session,
+      )
+    },
+
+    async getContactAdminReplyDelivery(sourceId, { session } = {}) {
+      return useSession(
+        deliveryModel.findOne({ kind: contactAdminReplyKind, sourceId }),
         session,
       )
     },
@@ -142,6 +163,62 @@ export function createEmailDeliveryService({
           },
         },
         { returnDocument: 'after' },
+      ), session)
+    },
+
+    async reconcileDeliveryAccepted(
+      deliveryId,
+      providerMessageId,
+      { session, acceptedAt = now() } = {},
+    ) {
+      return useSession(deliveryModel.findOneAndUpdate(
+        {
+          _id: deliveryId,
+          status: { $ne: 'accepted' },
+          $or: [
+            { providerMessageId: { $exists: false } },
+            { providerMessageId },
+          ],
+        },
+        {
+          $set: {
+            status: 'accepted',
+            acceptedAt,
+            providerMessageId,
+          },
+          $unset: {
+            leaseUntil: 1,
+            nextAttemptAt: 1,
+            failedAt: 1,
+            lastFailureCode: 1,
+          },
+        },
+        { returnDocument: 'after', runValidators: true },
+      ).select('+providerMessageId'), session)
+    },
+
+    async recordRecipientOutcome(deliveryId, update, { session } = {}) {
+      return useSession(deliveryModel.findByIdAndUpdate(
+        deliveryId,
+        { $set: update },
+        { returnDocument: 'after', runValidators: true },
+      ), session)
+    },
+
+    async requeueFailedDelivery(deliveryId, retriedAt, { session } = {}) {
+      return useSession(deliveryModel.findOneAndUpdate(
+        { _id: deliveryId, status: 'failed', lastFailureCode: { $ne: 'source-missing' } },
+        {
+          $set: {
+            status: 'pending',
+            nextAttemptAt: retriedAt,
+            lastManualRetryAt: retriedAt,
+            attemptCount: 0,
+          },
+          $inc: { manualRetryCount: 1 },
+          $unset: { failedAt: 1, leaseUntil: 1, lastAttemptAt: 1 },
+        },
+        { returnDocument: 'after', runValidators: true },
       ), session)
     },
 

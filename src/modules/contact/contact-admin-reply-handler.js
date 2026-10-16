@@ -42,6 +42,7 @@ export function createContactAdminReplyHandler({
         to: inquiry.email,
         replyTo: replyToEmail,
         ...renderContactAdminReply({ inquiry, reply }),
+        tags: [{ name: 'delivery_id', value: delivery._id.toString() }],
         idempotencyKey: `${contactAdminReplyKind}/${delivery._id}`,
       })
     },

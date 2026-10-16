@@ -44,7 +44,7 @@ export function createResendEmailProvider({
   timeoutMs = DEFAULT_TIMEOUT_MS,
 } = {}) {
   return {
-    async sendEmail({ from, to, replyTo, subject, html, text, idempotencyKey }) {
+    async sendEmail({ from, to, replyTo, subject, html, text, tags, idempotencyKey }) {
       let response
 
       try {
@@ -62,6 +62,7 @@ export function createResendEmailProvider({
             subject,
             html,
             text,
+            ...(tags ? { tags } : {}),
           }),
           signal: AbortSignal.timeout(timeoutMs),
         })

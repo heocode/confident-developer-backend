@@ -20,6 +20,9 @@ import { createAuthService } from './modules/auth/auth-service.js'
 import { createContactService } from './modules/contact/contact-service.js'
 import { createContactReplyService } from './modules/contact/contact-reply-service.js'
 import { createEmailDeliveryService } from './modules/email/email-delivery-service.js'
+import { createEmailDeliveryEventService } from './modules/email/email-delivery-event-service.js'
+import { createResendWebhookService } from './modules/email/resend-webhook-service.js'
+import { createResendWebhookRouter } from './modules/email/resend-webhook-routes.js'
 import { createGitHubService } from './modules/github/github-service.js'
 import { createGitHubRestProvider } from './modules/github/providers/github-rest-provider.js'
 import { createMediaService } from './modules/media/media-service.js'
@@ -52,6 +55,14 @@ export function createApp({
   antiSpamService = createAntiSpamService({ turnstileProvider }),
   emailDeliveryService = createEmailDeliveryService(),
   contactReplyService = createContactReplyService({ emailDeliveryService }),
+  emailDeliveryEventService = createEmailDeliveryEventService({
+    deliveryService: emailDeliveryService,
+    contactReplyService,
+  }),
+  resendWebhookService = createResendWebhookService({
+    webhookSecret: environment.resendWebhookSecret,
+    eventService: emailDeliveryEventService,
+  }),
   contactService = createContactService({
     antiSpamService,
     emailDeliveryService,
@@ -65,6 +76,7 @@ export function createApp({
 } = {}) {
   const app = express()
   const allowedOrigins = environment.clientOrigins
+  const productionApiRateLimiter = createApiRateLimiter(apiRateLimitOptions)
 
   app.disable('x-powered-by')
   app.set('env', environment.nodeEnv)
@@ -92,6 +104,11 @@ export function createApp({
     }),
   )
   app.use(morgan(environment.nodeEnv === 'production' ? 'combined' : 'dev'))
+  app.use(
+    '/api/v1/webhooks/resend',
+    productionApiRateLimiter,
+    createResendWebhookRouter({ webhookService: resendWebhookService }),
+  )
   app.use(express.json({ limit: '100kb' }))
   app.use(express.urlencoded({ extended: false, limit: '100kb' }))
   app.use(cookieParser())
@@ -108,7 +125,7 @@ export function createApp({
 
   app.use(
     '/api/v1',
-    createApiRateLimiter(apiRateLimitOptions),
+    productionApiRateLimiter,
     createV1Router({
       authService,
       githubService,

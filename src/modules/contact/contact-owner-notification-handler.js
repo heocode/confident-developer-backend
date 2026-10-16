@@ -31,6 +31,7 @@ export function createContactOwnerNotificationHandler({
       from: `Confident Developer <${fromEmail}>`,
       to: notificationToEmail,
       ...content,
+      tags: [{ name: 'delivery_id', value: delivery._id.toString() }],
       idempotencyKey: `${contactOwnerNotificationKind}/${delivery._id}`,
     })
   }

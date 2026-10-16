@@ -44,6 +44,19 @@ export function createContactReplyService({
   runInTransaction = runInMongoTransaction,
   now = () => new Date(),
 } = {}) {
+  async function recordReplyAcceptance(delivery, acceptedAt, { session } = {}) {
+    const reply = await useSession(replyModel.findById(delivery.sourceId), session)
+    if (!reply) throw createError(404, 'Contact reply source not found')
+    const inquiry = await useSession(inquiryModel.findById(reply.inquiryId), session)
+    if (!inquiry) throw createError(404, 'Contact inquiry source not found')
+
+    if (!inquiry.readAt) inquiry.readAt = acceptedAt
+    if (!inquiry.repliedAt) inquiry.repliedAt = acceptedAt
+    if (inquiry.status !== 'archived') inquiry.status = 'replied'
+    await inquiry.save({ session })
+    return inquiry
+  }
+
   async function findReplyByFingerprint(fingerprint, { session } = {}) {
     return useSession(
       applySelection(replyModel.findOne({ commandFingerprint: fingerprint }), '+message'),
@@ -153,18 +166,13 @@ export function createContactReplyService({
           { session, acceptedAt },
         )
         if (!updatedDelivery) return null
-
-        const reply = await useSession(replyModel.findById(delivery.sourceId), session)
-        if (!reply) throw createError(404, 'Contact reply source not found')
-        const inquiry = await useSession(inquiryModel.findById(reply.inquiryId), session)
-        if (!inquiry) throw createError(404, 'Contact inquiry source not found')
-
-        if (!inquiry.readAt) inquiry.readAt = acceptedAt
-        if (!inquiry.repliedAt) inquiry.repliedAt = acceptedAt
-        if (inquiry.status !== 'archived') inquiry.status = 'replied'
-        await inquiry.save({ session })
+        await recordReplyAcceptance(delivery, acceptedAt, { session })
         return updatedDelivery
       })
+    },
+
+    async recordReplyAcceptance(delivery, acceptedAt, { session } = {}) {
+      return recordReplyAcceptance(delivery, acceptedAt, { session })
     },
 
     async deleteInquiryReplies(inquiryId, { session } = {}) {

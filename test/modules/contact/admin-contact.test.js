@@ -131,6 +131,14 @@ describe('admin contact inbox HTTP contract', () => {
       calls.reply.push({ id, body, idempotencyKey })
       return replyView()
     },
+    async retryOwnerNotification(id, idempotencyKey) {
+      calls.retry.push({ kind: 'owner', id, idempotencyKey })
+      return ownerNotificationData({ status: 'pending', manualRetryCount: 1 })
+    },
+    async retryAdminReply(id, replyId, idempotencyKey) {
+      calls.retry.push({ kind: 'reply', id, replyId, idempotencyKey })
+      return replyView().delivery
+    },
   }
 
   before(async () => {
@@ -146,7 +154,7 @@ describe('admin contact inbox HTTP contract', () => {
   })
 
   beforeEach(() => {
-    calls = { list: [], get: [], status: [], delete: [], reply: [] }
+    calls = { list: [], get: [], status: [], delete: [], reply: [], retry: [] }
   })
 
   after(async () => {
@@ -212,8 +220,15 @@ describe('admin contact inbox HTTP contract', () => {
     assert.deepEqual(body.data.ownerNotification, {
       status: 'pending',
       attemptCount: 0,
+      recipientStatus: 'unknown',
+      manualRetryCount: 0,
       lastAttemptAt: null,
+      lastManualRetryAt: null,
       acceptedAt: null,
+      delayedAt: null,
+      deliveredAt: null,
+      bouncedAt: null,
+      complainedAt: null,
       failedAt: null,
       lastFailureCode: null,
     })
@@ -281,8 +296,15 @@ describe('admin contact inbox HTTP contract', () => {
     assert.deepEqual(body.data.delivery, {
       status: 'pending',
       attemptCount: 0,
+      recipientStatus: 'unknown',
+      manualRetryCount: 0,
       lastAttemptAt: null,
+      lastManualRetryAt: null,
       acceptedAt: null,
+      delayedAt: null,
+      deliveredAt: null,
+      bouncedAt: null,
+      complainedAt: null,
       failedAt: null,
       lastFailureCode: null,
     })
@@ -318,6 +340,37 @@ describe('admin contact inbox HTTP contract', () => {
       assert.equal(result.response.status, 400)
     }
     assert.equal(calls.reply.length, 0)
+  })
+
+  it('retries failed notification and reply deliveries through idempotent commands', async () => {
+    const idempotencyKey = '4cb756b9-4a95-4264-a843-d687b29b1e92'
+    const paths = [
+      `/api/v1/admin/inquiries/${inquiryId}/owner-notification/retry`,
+      `/api/v1/admin/inquiries/${inquiryId}/replies/68f120000000000000000003/retry`,
+    ]
+
+    for (const path of paths) {
+      const { response, body } = await requestJson(baseUrl, path, {
+        method: 'POST',
+        headers: {
+          ...adminHeaders({ origin: true }),
+          'idempotency-key': idempotencyKey,
+        },
+      })
+      assert.equal(response.status, 200)
+      assert.equal(body.data.status, 'pending')
+      assert.equal('providerMessageId' in body.data, false)
+    }
+
+    assert.deepEqual(calls.retry, [
+      { kind: 'owner', id: inquiryId, idempotencyKey },
+      {
+        kind: 'reply',
+        id: inquiryId,
+        replyId: '68f120000000000000000003',
+        idempotencyKey,
+      },
+    ])
   })
 
   it('deletes through the archived-only service operation', async () => {

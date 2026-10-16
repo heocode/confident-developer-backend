@@ -295,6 +295,7 @@ describe('Email delivery service', () => {
     await service.markDeliveryAccepted(sourceId, 2, 'provider-id')
     await service.rescheduleDelivery(sourceId, 3, 'timeout', firstNow)
     await service.markDeliveryFailed(sourceId, 4, 'provider-rejected')
+    await service.requeueFailedDelivery(sourceId, secondNow)
 
     assert.deepEqual(
       operations.map(({ filter }) => filter),
@@ -302,6 +303,7 @@ describe('Email delivery service', () => {
         { _id: sourceId, status: 'processing', attemptCount: 2 },
         { _id: sourceId, status: 'processing', attemptCount: 3 },
         { _id: sourceId, status: 'processing', attemptCount: 4 },
+        { _id: sourceId, status: 'failed', lastFailureCode: { $ne: 'source-missing' } },
       ],
     )
     assert.deepEqual(operations[0].update.$set, {
@@ -318,6 +320,16 @@ describe('Email delivery service', () => {
       status: 'failed',
       failedAt: secondNow,
       lastFailureCode: 'provider-rejected',
+    })
+    assert.deepEqual(operations[3].update, {
+      $set: {
+        status: 'pending',
+        nextAttemptAt: secondNow,
+        lastManualRetryAt: secondNow,
+        attemptCount: 0,
+      },
+      $inc: { manualRetryCount: 1 },
+      $unset: { failedAt: 1, leaseUntil: 1, lastAttemptAt: 1 },
     })
     assert.ok(operations.every(({ options }) => options.returnDocument === 'after'))
   })
