@@ -80,7 +80,7 @@ describe('EmailDelivery model', () => {
 
     for (const state of states) await new EmailDelivery(state).validate()
 
-    assert.deepEqual(emailDeliveryKinds, ['contact-owner-notification'])
+    assert.deepEqual(emailDeliveryKinds, ['contact-owner-notification', 'contact-admin-reply'])
     assert.deepEqual(emailDeliveryStatuses, ['pending', 'processing', 'accepted', 'failed'])
     assert.deepEqual(emailDeliveryFailureCodes, [
       'configuration',
@@ -166,6 +166,28 @@ describe('Email delivery service', () => {
     assert.deepEqual(state.saveOptions, [{ session: 'email-test-session' }])
   })
 
+  it('creates a pending contact reply delivery in the supplied transaction', async () => {
+    const state = { saved: [], saveOptions: [] }
+    function DeliveryModel(values) {
+      const delivery = new EmailDelivery(values)
+      delivery.save = async (options) => {
+        await delivery.validate()
+        state.saved.push(delivery)
+        state.saveOptions.push(options)
+      }
+      return delivery
+    }
+    const service = createEmailDeliveryService({ deliveryModel: DeliveryModel, now: () => firstNow })
+
+    const delivery = await service.createContactAdminReply(sourceId, {
+      session: 'email-test-session',
+    })
+
+    assert.equal(delivery.kind, 'contact-admin-reply')
+    assert.equal(delivery.status, 'pending')
+    assert.deepEqual(state.saveOptions, [{ session: 'email-test-session' }])
+  })
+
   it('lists, retrieves, and deletes notification envelopes without contact payloads', async () => {
     const state = { filters: [], sessions: [], deletions: [] }
     const delivery = new EmailDelivery(deliveryData())
@@ -232,7 +254,7 @@ describe('Email delivery service', () => {
     assert.deepEqual(operations, [
       {
         filter: {
-          kind: 'contact-owner-notification',
+          kind: { $in: ['contact-owner-notification', 'contact-admin-reply'] },
           $or: [
             { status: 'pending', nextAttemptAt: { $lte: firstNow } },
             { status: 'processing', leaseUntil: { $lte: firstNow } },

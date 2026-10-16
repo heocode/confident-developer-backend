@@ -1,6 +1,7 @@
 import {
   serializeAdminContactInquiry,
   serializeAdminContactListItem,
+  serializeAdminContactReply,
 } from './admin-contact-serializer.js'
 
 export function createAdminContactController({ contactService }) {
@@ -39,6 +40,20 @@ export function createAdminContactController({ contactService }) {
         success: true,
         message: 'Contact inquiry status updated successfully.',
         data: serializeAdminContactInquiry(inquiry),
+      })
+    },
+
+    createReply: async (request, response) => {
+      const reply = await contactService.queueAdminReply(
+        request.validated.params.id,
+        request.validated.body,
+        request.validated.headers.idempotencyKey,
+      )
+
+      response.status(201).json({
+        success: true,
+        message: 'Contact reply queued successfully.',
+        data: serializeAdminContactReply(reply),
       })
     },
 

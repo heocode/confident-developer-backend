@@ -192,6 +192,7 @@ Implemented protected contact inbox routes are:
 GET    /api/v1/admin/inquiries
 GET    /api/v1/admin/inquiries/:id
 PATCH  /api/v1/admin/inquiries/:id/status
+POST   /api/v1/admin/inquiries/:id/replies
 DELETE /api/v1/admin/inquiries/:id
 ```
 
@@ -380,11 +381,15 @@ Scope keys are `product-design`, `mobile-app`, `website-web-app`, `backend-api`,
 
 Inbox states are `new`, `read`, `replied`, and `archived`. `readAt`, `repliedAt`, and `archivedAt` are server-owned and validated against the current state. Archiving retains prior read and reply dates, while restoring derives the active state from that history. Lifecycle operations are idempotent and use conditional atomic document updates.
 
-New documents receive a non-unique SHA-256 fingerprint of normalized email and message. Public submission checks it against the preceding 24 hours after Turnstile verification, without persisting a raw IP address or permanently preventing a person from sending the same inquiry again. Contact inquiries are admin-only records and public reading is not planned. The protected inbox provides paginated status-filtered lists, private detail, explicit lifecycle actions, archived-only hard deletion, and the related owner-notification outbox state; reply delivery remains a later implementation stage.
+New documents receive a non-unique SHA-256 fingerprint of normalized email and message. Public submission checks it against the preceding 24 hours after Turnstile verification, without persisting a raw IP address or permanently preventing a person from sending the same inquiry again. Contact inquiries are admin-only records and public reading is not planned. The protected inbox provides paginated status-filtered lists, private detail with ordered outgoing reply history, explicit lifecycle actions, archived-only hard deletion, and related delivery state.
+
+`ContactReply` uses the explicit `contact_replies` collection. It stores an immutable inquiry reference, private normalized plain-text message, and a non-selected SHA-256 command fingerprint. A unique fingerprint makes the admin command idempotent, while inquiry/date ordering supports deterministic thread history. The admin reply endpoint requires a UUID `Idempotency-Key`; repeating the same command returns its existing reply, while reusing it for different content returns `409`.
+
+Reply creation, its `contact-admin-reply` outbox envelope, and an initial `new` to `read` transition commit in one Atlas transaction. Archived inquiries reject new replies until restored. Provider acceptance atomically finalizes the fenced delivery attempt and assigns the inquiry's first `repliedAt`; active inquiries become `replied`, while archived inquiries retain that state and later restore to `replied`. Provider failure never creates a false replied transition. Hard deletion removes the inquiry, outgoing history, and both notification and reply delivery envelopes in one transaction.
 
 ### EmailDelivery
 
-`EmailDelivery` uses the explicit `email_deliveries` collection as the durable provider-neutral outbox. The current `contact-owner-notification` kind stores an immutable ContactInquiry source ID and operational lifecycle metadata only; it does not duplicate contact identity, message content, scope, budget, recipient addresses, or rendered email bodies.
+`EmailDelivery` uses the explicit `email_deliveries` collection as the durable provider-neutral outbox. `contact-owner-notification` points to ContactInquiry and `contact-admin-reply` points to ContactReply. Envelopes store immutable source identity and operational lifecycle metadata only; they do not duplicate contact identity, message content, recipient addresses, or rendered email bodies.
 
 Delivery states are `pending`, `processing`, `accepted`, and `failed`. Attempt counts, scheduling dates, leases, terminal dates, allowlisted failure codes, and the non-selected provider message ID are validated against the state. A unique `kind` plus `sourceId` index permits only one owner notification per inquiry, while separate indexes support due-work claims and expired-lease recovery.
 

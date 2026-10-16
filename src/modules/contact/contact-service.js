@@ -5,6 +5,7 @@ import mongoose from 'mongoose'
 
 import { createEmailDeliveryService } from '../email/email-delivery-service.js'
 import { ContactInquiry } from './contact-inquiry.js'
+import { createContactReplyService } from './contact-reply-service.js'
 import {
   normalizeContactEmail,
   normalizeContactMessage,
@@ -50,6 +51,7 @@ export function createContactService({
   inquiryModel = ContactInquiry,
   antiSpamService,
   emailDeliveryService = createEmailDeliveryService(),
+  contactReplyService = createContactReplyService({ emailDeliveryService }),
   runInTransaction = runInMongoTransaction,
   now = () => new Date(),
 } = {}) {
@@ -81,8 +83,11 @@ export function createContactService({
   }
 
   async function createAdminInquiryView(inquiry) {
-    const ownerNotification = await emailDeliveryService.getContactOwnerNotification(idOf(inquiry))
-    return { inquiry, ownerNotification }
+    const [ownerNotification, replies] = await Promise.all([
+      emailDeliveryService.getContactOwnerNotification(idOf(inquiry)),
+      contactReplyService.listInquiryReplies(idOf(inquiry)),
+    ])
+    return { inquiry, ownerNotification, replies }
   }
 
   async function transitionOrFind(inquiryId, filter, update) {
@@ -170,6 +175,10 @@ export function createContactService({
       return createAdminInquiryView(await findAdminInquiry(inquiryId))
     },
 
+    queueAdminReply(inquiryId, input, idempotencyKey) {
+      return contactReplyService.queueReply(inquiryId, input, idempotencyKey)
+    },
+
     async markInquiryRead(inquiryId) {
       const readAt = now()
       const inquiry = await transitionOrFind(
@@ -217,6 +226,7 @@ export function createContactService({
           session,
         )
         if (inquiry) {
+          await contactReplyService.deleteInquiryReplies(idOf(inquiry), { session })
           await emailDeliveryService.deleteContactDeliveries(idOf(inquiry), { session })
           return
         }

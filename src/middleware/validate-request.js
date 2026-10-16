@@ -1,4 +1,4 @@
-const requestParts = ['body', 'params', 'query']
+const requestParts = ['body', 'params', 'query', 'headers']
 
 export function validateRequest(schemas) {
   return async (request, _response, next) => {

@@ -125,9 +125,14 @@ Authenticated contact inbox endpoints are:
 - `GET /api/v1/admin/inquiries`
 - `GET /api/v1/admin/inquiries/:id`
 - `PATCH /api/v1/admin/inquiries/:id/status`
+- `POST /api/v1/admin/inquiries/:id/replies`
 - `DELETE /api/v1/admin/inquiries/:id`
 
-The inbox list supports strict page-based pagination and an optional `new`, `read`, `replied`, or `archived` status filter. Opening detail is read-only; the frontend explicitly sends the `read` action when an inquiry is actually opened. Status actions also support idempotent `archive` and `restore`, while permanent deletion is allowed only after archiving. Email and message are available only through these authenticated representations, and the submission fingerprint is never returned. Admin representations include the allowlisted owner-notification state; historical inquiries without a job return `ownerNotification: null`. When the complete email configuration is present, an in-process worker sends new-inquiry notifications through Resend and advances jobs through `processing` to `accepted`, retryable `pending`, or terminal `failed`. Without configuration, the worker stays disabled and durable jobs remain pending.
+The inbox list supports strict page-based pagination and an optional `new`, `read`, `replied`, or `archived` status filter. Opening detail is read-only; the frontend explicitly sends the `read` action when an inquiry is actually opened. Status actions also support idempotent `archive` and `restore`, while permanent deletion is allowed only after archiving. Email and message are available only through these authenticated representations, and the submission fingerprint is never returned. Admin representations include the allowlisted owner-notification state; historical inquiries without a job return `ownerNotification: null`. Inquiry detail also contains the ordered private history of administrator replies and their delivery state.
+
+Creating a reply requires a trusted origin, a strict `{ "message": "..." }` body, and a UUID `Idempotency-Key` header. The reply and its outbox envelope commit in one Atlas transaction and return `201` without waiting for Resend. A newly queued reply marks a new inquiry read; only provider acceptance moves an active inquiry to `replied`. Archived inquiries must be restored before another reply can be queued. Visitor replies go to the configured owner address through `Reply-To` but are not ingested into this API.
+
+When the complete email configuration is present, an in-process worker sends both new-inquiry notifications and administrator replies through Resend and advances jobs through `processing` to `accepted`, retryable `pending`, or terminal `failed`. Without configuration, the worker stays disabled and durable jobs remain pending.
 
 Authenticated project management endpoints are:
 

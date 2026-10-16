@@ -18,6 +18,7 @@ import { createAntiSpamService } from './modules/anti-spam/anti-spam-service.js'
 import { createCloudflareTurnstileProvider } from './modules/anti-spam/providers/cloudflare-turnstile-provider.js'
 import { createAuthService } from './modules/auth/auth-service.js'
 import { createContactService } from './modules/contact/contact-service.js'
+import { createContactReplyService } from './modules/contact/contact-reply-service.js'
 import { createEmailDeliveryService } from './modules/email/email-delivery-service.js'
 import { createGitHubService } from './modules/github/github-service.js'
 import { createGitHubRestProvider } from './modules/github/providers/github-rest-provider.js'
@@ -50,7 +51,12 @@ export function createApp({
   turnstileProvider = createCloudflareTurnstileProvider(environment.turnstile),
   antiSpamService = createAntiSpamService({ turnstileProvider }),
   emailDeliveryService = createEmailDeliveryService(),
-  contactService = createContactService({ antiSpamService, emailDeliveryService }),
+  contactReplyService = createContactReplyService({ emailDeliveryService }),
+  contactService = createContactService({
+    antiSpamService,
+    emailDeliveryService,
+    contactReplyService,
+  }),
   referenceService = createReferenceService({ antiSpamService, profileService }),
   projectService = createAdminProjectService(),
   publicProjectService = createPublicProjectService(),

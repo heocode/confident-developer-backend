@@ -7,6 +7,7 @@ import { createResendEmailProvider } from '../../../src/modules/email/providers/
 const email = {
   from: 'Confident Developer <contact@example.com>',
   to: 'owner@example.com',
+  replyTo: 'reply@example.com',
   subject: 'New inquiry',
   html: '<p>Hello</p>',
   text: 'Hello',
@@ -37,6 +38,7 @@ describe('Resend email provider', () => {
     assert.deepEqual(JSON.parse(requests[0][1].body), {
       from: email.from,
       to: [email.to],
+      reply_to: email.replyTo,
       subject: email.subject,
       html: email.html,
       text: email.text,

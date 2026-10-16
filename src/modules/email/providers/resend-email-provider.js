@@ -44,7 +44,7 @@ export function createResendEmailProvider({
   timeoutMs = DEFAULT_TIMEOUT_MS,
 } = {}) {
   return {
-    async sendEmail({ from, to, subject, html, text, idempotencyKey }) {
+    async sendEmail({ from, to, replyTo, subject, html, text, idempotencyKey }) {
       let response
 
       try {
@@ -55,7 +55,14 @@ export function createResendEmailProvider({
             'content-type': 'application/json',
             'idempotency-key': idempotencyKey,
           },
-          body: JSON.stringify({ from, to: [to], subject, html, text }),
+          body: JSON.stringify({
+            from,
+            to: [to],
+            ...(replyTo ? { reply_to: replyTo } : {}),
+            subject,
+            html,
+            text,
+          }),
           signal: AbortSignal.timeout(timeoutMs),
         })
       } catch (error) {

@@ -17,10 +17,11 @@ function splitAdminView(value) {
     return {
       inquiry: sourceOf(value.inquiry),
       ownerNotification: value.ownerNotification ? sourceOf(value.ownerNotification) : null,
+      replies: value.replies ?? [],
     }
   }
 
-  return { inquiry: sourceOf(value), ownerNotification: null }
+  return { inquiry: sourceOf(value), ownerNotification: null, replies: [] }
 }
 
 function serializeOwnerNotification(delivery, detailed) {
@@ -73,5 +74,18 @@ export function serializeAdminContactInquiry(inquiry) {
     ...serializeBaseInquiry(view.inquiry),
     message: view.inquiry.message,
     ownerNotification: serializeOwnerNotification(view.ownerNotification, true),
+    replies: view.replies.map(serializeAdminContactReply),
+  }
+}
+
+export function serializeAdminContactReply(value) {
+  const reply = sourceOf(value.reply ?? value)
+  const delivery = value.delivery ? sourceOf(value.delivery) : null
+
+  return {
+    id: serializeId(reply._id ?? reply.id),
+    message: reply.message,
+    createdAt: serializeDate(reply.createdAt),
+    delivery: serializeOwnerNotification(delivery, true),
   }
 }

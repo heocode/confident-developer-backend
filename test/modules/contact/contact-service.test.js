@@ -25,6 +25,15 @@ function emptyEmailDeliveryService(overrides = {}) {
   }
 }
 
+function emptyContactReplyService(overrides = {}) {
+  return {
+    async listInquiryReplies() { return [] },
+    async queueReply() {},
+    async deleteInquiryReplies() {},
+    ...overrides,
+  }
+}
+
 async function runInlineTransaction(operation) {
   return operation('contact-test-session')
 }
@@ -85,6 +94,7 @@ function createHarness(existingInquiry = null, dates = [firstNow]) {
   const service = createContactService({
     inquiryModel: InquiryModel,
     emailDeliveryService: emptyEmailDeliveryService(),
+    contactReplyService: emptyContactReplyService(),
     runInTransaction: runInlineTransaction,
     now: () => dates[Math.min(dateIndex++, dates.length - 1)],
   })
@@ -164,6 +174,7 @@ function createSubmissionHarness({
     inquiryModel: InquiryModel,
     antiSpamService,
     emailDeliveryService,
+    contactReplyService: emptyContactReplyService(),
     runInTransaction: async (operation) => {
       state.events.push('transaction-start')
       try {
@@ -278,6 +289,7 @@ function createAdminHarness(inquiries = [], deliveries = []) {
     service: createContactService({
       inquiryModel,
       emailDeliveryService,
+      contactReplyService: emptyContactReplyService(),
       runInTransaction: runInlineTransaction,
     }),
     state,
@@ -527,6 +539,7 @@ describe('Contact service', () => {
         },
       },
       emailDeliveryService: emptyEmailDeliveryService(),
+      contactReplyService: emptyContactReplyService(),
     })
 
     await assert.rejects(service.markInquiryRead(inquiryId), databaseError)

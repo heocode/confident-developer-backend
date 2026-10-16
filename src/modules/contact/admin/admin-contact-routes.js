@@ -6,6 +6,8 @@ import {
   adminContactEmptyQuerySchema,
   adminContactIdParamsSchema,
   adminContactListQuerySchema,
+  createAdminContactReplyBodySchema,
+  createAdminContactReplyHeadersSchema,
   updateAdminContactStatusBodySchema,
 } from './admin-contact-schemas.js'
 
@@ -14,6 +16,16 @@ export function createAdminContactRouter({ contactService }) {
   const controller = createAdminContactController({ contactService })
 
   router.get('/', validateRequest({ query: adminContactListQuerySchema }), controller.list)
+  router.post(
+    '/:id/replies',
+    validateRequest({
+      params: adminContactIdParamsSchema,
+      query: adminContactEmptyQuerySchema,
+      body: createAdminContactReplyBodySchema,
+      headers: createAdminContactReplyHeadersSchema,
+    }),
+    controller.createReply,
+  )
   router.patch(
     '/:id/status',
     validateRequest({

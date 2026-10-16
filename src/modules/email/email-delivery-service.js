@@ -1,5 +1,9 @@
 import { EmailDelivery } from './email-delivery.js'
-import { contactOwnerNotificationKind } from './email-delivery-values.js'
+import {
+  contactAdminReplyKind,
+  contactOwnerNotificationKind,
+  emailDeliveryKinds,
+} from './email-delivery-values.js'
 const DEFAULT_LEASE_MS = 30_000
 
 function useSession(query, session) {
@@ -14,6 +18,19 @@ export function createEmailDeliveryService({
     async createContactOwnerNotification(sourceId, { session, nextAttemptAt = now() } = {}) {
       const delivery = new deliveryModel({
         kind: contactOwnerNotificationKind,
+        sourceId,
+        status: 'pending',
+        attemptCount: 0,
+        nextAttemptAt,
+      })
+
+      await delivery.save({ session })
+      return delivery
+    },
+
+    async createContactAdminReply(sourceId, { session, nextAttemptAt = now() } = {}) {
+      const delivery = new deliveryModel({
+        kind: contactAdminReplyKind,
         sourceId,
         status: 'pending',
         attemptCount: 0,
@@ -43,9 +60,29 @@ export function createEmailDeliveryService({
       )
     },
 
+    async listContactAdminReplyDeliveries(sourceIds, { session } = {}) {
+      if (sourceIds.length === 0) return []
+
+      return useSession(
+        deliveryModel.find({
+          kind: contactAdminReplyKind,
+          sourceId: { $in: sourceIds },
+        }),
+        session,
+      )
+    },
+
     async deleteContactDeliveries(sourceId, { session } = {}) {
       return deliveryModel.deleteMany(
         { kind: contactOwnerNotificationKind, sourceId },
+        { session },
+      )
+    },
+
+    async deleteContactReplyDeliveries(sourceIds, { session } = {}) {
+      if (sourceIds.length === 0) return
+      return deliveryModel.deleteMany(
+        { kind: contactAdminReplyKind, sourceId: { $in: sourceIds } },
         { session },
       )
     },
@@ -56,7 +93,7 @@ export function createEmailDeliveryService({
 
       return deliveryModel.findOneAndUpdate(
         {
-          kind: contactOwnerNotificationKind,
+          kind: { $in: emailDeliveryKinds },
           $or: [
             { status: 'pending', nextAttemptAt: { $lte: claimedAt } },
             { status: 'processing', leaseUntil: { $lte: claimedAt } },
@@ -83,13 +120,18 @@ export function createEmailDeliveryService({
       )
     },
 
-    async markDeliveryAccepted(deliveryId, attemptCount, providerMessageId) {
-      return deliveryModel.findOneAndUpdate(
+    async markDeliveryAccepted(
+      deliveryId,
+      attemptCount,
+      providerMessageId,
+      { session, acceptedAt = now() } = {},
+    ) {
+      return useSession(deliveryModel.findOneAndUpdate(
         { _id: deliveryId, status: 'processing', attemptCount },
         {
           $set: {
             status: 'accepted',
-            acceptedAt: now(),
+            acceptedAt,
             providerMessageId,
           },
           $unset: {
@@ -100,7 +142,7 @@ export function createEmailDeliveryService({
           },
         },
         { returnDocument: 'after' },
-      )
+      ), session)
     },
 
     async rescheduleDelivery(deliveryId, attemptCount, failureCode, nextAttemptAt) {

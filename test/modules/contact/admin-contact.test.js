@@ -46,7 +46,25 @@ function ownerNotificationData(overrides = {}) {
 }
 
 function inquiryView(inquiryOverrides = {}, notification = ownerNotificationData()) {
-  return { inquiry: inquiryData(inquiryOverrides), ownerNotification: notification }
+  return { inquiry: inquiryData(inquiryOverrides), ownerNotification: notification, replies: [] }
+}
+
+function replyView() {
+  return {
+    reply: {
+      id: '68f120000000000000000003',
+      inquiryId,
+      message: 'Thank you for reaching out.',
+      commandFingerprint: 'private-command-fingerprint',
+      createdAt: new Date('2026-10-15T14:00:00.000Z'),
+    },
+    delivery: {
+      id: '68f120000000000000000004',
+      sourceId: '68f120000000000000000003',
+      status: 'pending',
+      attemptCount: 0,
+    },
+  }
 }
 
 async function requestJson(baseUrl, path, options = {}) {
@@ -109,6 +127,10 @@ describe('admin contact inbox HTTP contract', () => {
     async deleteArchivedInquiry(id) {
       calls.delete.push(id)
     },
+    async queueAdminReply(id, body, idempotencyKey) {
+      calls.reply.push({ id, body, idempotencyKey })
+      return replyView()
+    },
   }
 
   before(async () => {
@@ -124,7 +146,7 @@ describe('admin contact inbox HTTP contract', () => {
   })
 
   beforeEach(() => {
-    calls = { list: [], get: [], status: [], delete: [] }
+    calls = { list: [], get: [], status: [], delete: [], reply: [] }
   })
 
   after(async () => {
@@ -237,6 +259,65 @@ describe('admin contact inbox HTTP contract', () => {
       assert.equal(result.response.status, 400)
     }
     assert.equal(calls.status.length, 3)
+  })
+
+  it('queues an idempotent reply without exposing delivery internals', async () => {
+    const idempotencyKey = 'e9a18202-ec50-4d3d-8cd6-455fde7d20b4'
+    const { response, body } = await requestJson(
+      baseUrl,
+      `/api/v1/admin/inquiries/${inquiryId}/replies`,
+      {
+        method: 'POST',
+        headers: {
+          ...adminHeaders({ origin: true, json: true }),
+          'idempotency-key': idempotencyKey,
+        },
+        body: JSON.stringify({ message: '  Thank you for reaching out.  ' }),
+      },
+    )
+
+    assert.equal(response.status, 201)
+    assert.equal(body.data.message, 'Thank you for reaching out.')
+    assert.deepEqual(body.data.delivery, {
+      status: 'pending',
+      attemptCount: 0,
+      lastAttemptAt: null,
+      acceptedAt: null,
+      failedAt: null,
+      lastFailureCode: null,
+    })
+    assert.equal('commandFingerprint' in body.data, false)
+    assert.equal('sourceId' in body.data.delivery, false)
+    assert.deepEqual(calls.reply, [
+      {
+        id: inquiryId,
+        body: { message: 'Thank you for reaching out.' },
+        idempotencyKey,
+      },
+    ])
+  })
+
+  it('requires a UUID idempotency key and strict reply body', async () => {
+    for (const request of [
+      { headers: {}, body: { message: 'Reply' } },
+      { headers: { 'idempotency-key': 'invalid' }, body: { message: 'Reply' } },
+      {
+        headers: { 'idempotency-key': 'e9a18202-ec50-4d3d-8cd6-455fde7d20b4' },
+        body: { message: 'Reply', subject: 'Client-owned' },
+      },
+    ]) {
+      const result = await requestJson(
+        baseUrl,
+        `/api/v1/admin/inquiries/${inquiryId}/replies`,
+        {
+          method: 'POST',
+          headers: { ...adminHeaders({ origin: true, json: true }), ...request.headers },
+          body: JSON.stringify(request.body),
+        },
+      )
+      assert.equal(result.response.status, 400)
+    }
+    assert.equal(calls.reply.length, 0)
   })
 
   it('deletes through the archived-only service operation', async () => {

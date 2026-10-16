@@ -1,0 +1,261 @@
+{
+    "info": {
+        "_postman_id": "53818076-a643-4dde-b1e8-c15814cf94d9",
+        "name": "Confident Developer - Contact Me End-to-End",
+        "description": "Manual end-to-end flow for a real Contact Me submission, admin inbox lookup, and administrator email reply. Run the requests in order. The collection intentionally contains no administrator password.",
+        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "variable": [
+        {
+            "key": "baseUrl",
+            "value": "http://localhost:3000"
+        },
+        {
+            "key": "trustedOrigin",
+            "value": "http://localhost:5173"
+        },
+        {
+            "key": "adminEmail",
+            "value": ""
+        },
+        {
+            "key": "adminPassword",
+            "value": "",
+            "type": "secret"
+        },
+        {
+      "key": "contactE2eVisitorEmail",
+            "value": "heospam1@gmail.com"
+        },
+        {
+            "key": "turnstileToken",
+            "value": "1x00000000000000000000AA"
+        },
+        {
+            "key": "contactMessage",
+            "value": ""
+        },
+        {
+            "key": "inquiryId",
+            "value": ""
+        },
+        {
+            "key": "replyIdempotencyKey",
+            "value": ""
+        }
+    ],
+    "item": [
+        {
+            "name": "1. Login as administrator",
+            "request": {
+                "method": "POST",
+                "header": [
+                    {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                    },
+                    {
+                        "key": "Origin",
+                        "value": "{{trustedOrigin}}"
+                    }
+                ],
+                "body": {
+                    "mode": "raw",
+                    "raw": "{\n  \"email\": \"{{adminEmail}}\",\n  \"password\": \"{{adminPassword}}\"\n}"
+                },
+                "url": "{{baseUrl}}/api/v1/auth/login",
+                "description": "Set adminEmail and adminPassword in the collection variables before sending. Postman stores the returned session cookie automatically."
+            },
+            "event": [
+                {
+                    "listen": "test",
+                    "script": {
+                        "exec": [
+                            "pm.test('Administrator authenticated', function () {",
+                            "  pm.response.to.have.status(200);",
+                            "});"
+                        ]
+                    }
+                }
+            ]
+        },
+        {
+            "name": "2. Submit a real contact inquiry",
+            "request": {
+                "method": "POST",
+                "header": [
+                    {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                    },
+                    {
+                        "key": "Origin",
+                        "value": "{{trustedOrigin}}"
+                    }
+                ],
+                "body": {
+                    "mode": "raw",
+          "raw": "{\n  \"name\": \"Postman Email Test\",\n  \"email\": \"{{contactE2eVisitorEmail}}\",\n  \"message\": \"{{contactMessage}}\",\n  \"scopes\": [\"backend-api\", \"website-web-app\"],\n  \"budget\": \"not-sure\",\n  \"turnstileToken\": \"{{turnstileToken}}\",\n  \"website\": \"\"\n}"
+                },
+                "url": "{{baseUrl}}/api/v1/contact",
+                "description": "Creates a unique inquiry and queues the owner notification. With the configured Resend test sender, visitorEmail should be the Resend account owner's address."
+            },
+            "event": [
+                {
+                    "listen": "prerequest",
+                    "script": {
+                        "exec": [
+                            "const marker = new Date().toISOString();",
+                            "pm.collectionVariables.set('contactMessage', `Real Postman reply flow test created at ${marker}. Please verify both notification and reply delivery.`);",
+                            "pm.collectionVariables.unset('inquiryId');",
+                            "pm.collectionVariables.unset('replyIdempotencyKey');"
+                        ]
+                    }
+                },
+                {
+                    "listen": "test",
+                    "script": {
+                        "exec": [
+                            "pm.test('Inquiry accepted without exposing private data', function () {",
+                            "  pm.response.to.have.status(201);",
+                            "  const json = pm.response.json();",
+                            "  pm.expect(json.success).to.eql(true);",
+                            "  pm.expect(json).not.to.have.property('data');",
+                            "});"
+                        ]
+                    }
+                }
+            ]
+        },
+        {
+            "name": "3. Find the submitted inquiry in admin inbox",
+            "request": {
+                "method": "GET",
+                "header": [],
+                "url": "{{baseUrl}}/api/v1/admin/inquiries?page=1&limit=100",
+                "description": "Finds this run by its exact generated message metadata and stores inquiryId for the remaining requests."
+            },
+            "event": [
+                {
+                    "listen": "test",
+                    "script": {
+                        "exec": [
+                            "pm.test('Inbox returned successfully', function () {",
+                            "  pm.response.to.have.status(200);",
+                            "});",
+                            "const json = pm.response.json();",
+              "const visitorEmail = pm.collectionVariables.get('contactE2eVisitorEmail').toLowerCase();",
+                            "const match = json.data.items.find((item) => item.name === 'Postman Email Test' && item.email === visitorEmail);",
+                            "pm.test('Submitted inquiry found', function () {",
+                            "  pm.expect(match, 'No matching inquiry in the first 100 inbox items').to.exist;",
+                            "});",
+                            "if (match) pm.collectionVariables.set('inquiryId', match.id);"
+                        ]
+                    }
+                }
+            ]
+        },
+        {
+            "name": "4. Open inquiry detail",
+            "request": {
+                "method": "GET",
+                "header": [],
+                "url": "{{baseUrl}}/api/v1/admin/inquiries/{{inquiryId}}",
+                "description": "Confirms the exact generated message, owner notification state, and initially empty reply history. This GET does not mutate inbox status."
+            },
+            "event": [
+                {
+                    "listen": "test",
+                    "script": {
+                        "exec": [
+                            "pm.test('Exact inquiry detail returned', function () {",
+                            "  pm.response.to.have.status(200);",
+                            "  const inquiry = pm.response.json().data;",
+              "  pm.expect(inquiry.email).to.eql(pm.collectionVariables.get('contactE2eVisitorEmail'));",
+                            "  pm.expect(inquiry.message).to.eql(pm.collectionVariables.get('contactMessage'));",
+                            "  pm.expect(inquiry.replies).to.be.an('array');",
+                            "});"
+                        ]
+                    }
+                }
+            ]
+        },
+        {
+            "name": "5. Reply to the visitor",
+            "request": {
+                "method": "POST",
+                "header": [
+                    {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                    },
+                    {
+                        "key": "Origin",
+                        "value": "{{trustedOrigin}}"
+                    },
+                    {
+                        "key": "Idempotency-Key",
+                        "value": "{{replyIdempotencyKey}}"
+                    }
+                ],
+                "body": {
+                    "mode": "raw",
+                    "raw": "{\n  \"message\": \"Hi! Thank you for your message. This is a real end-to-end reply sent from the Confident Developer admin inbox.\"\n}"
+                },
+                "url": "{{baseUrl}}/api/v1/admin/inquiries/{{inquiryId}}/replies",
+                "description": "Queues the reply and returns immediately. Re-sending this request uses the same UUID and must not create or send a second reply."
+            },
+            "event": [
+                {
+                    "listen": "prerequest",
+                    "script": {
+                        "exec": [
+                            "if (!pm.collectionVariables.get('replyIdempotencyKey')) {",
+                            "  pm.collectionVariables.set('replyIdempotencyKey', pm.variables.replaceIn('{{$guid}}'));",
+                            "}"
+                        ]
+                    }
+                },
+                {
+                    "listen": "test",
+                    "script": {
+                        "exec": [
+                            "pm.test('Reply queued', function () {",
+                            "  pm.response.to.have.status(201);",
+                            "  const reply = pm.response.json().data;",
+                            "  pm.expect(reply.message).to.contain('real end-to-end reply');",
+                            "  pm.expect(reply.delivery.status).to.be.oneOf(['pending', 'processing', 'accepted']);",
+                            "});"
+                        ]
+                    }
+                }
+            ]
+        },
+        {
+            "name": "6. Verify delivery and replied status",
+            "request": {
+                "method": "GET",
+                "header": [],
+                "url": "{{baseUrl}}/api/v1/admin/inquiries/{{inquiryId}}",
+                "description": "Send after the worker has had a few seconds. Expected final state: inquiry status replied and the latest reply delivery accepted."
+            },
+            "event": [
+                {
+                    "listen": "test",
+                    "script": {
+                        "exec": [
+                            "pm.test('Reply accepted by provider', function () {",
+                            "  pm.response.to.have.status(200);",
+                            "  const inquiry = pm.response.json().data;",
+                            "  pm.expect(inquiry.status).to.eql('replied');",
+                            "  pm.expect(inquiry.repliedAt).to.be.a('string');",
+                            "  pm.expect(inquiry.replies).to.have.lengthOf(1);",
+                            "  pm.expect(inquiry.replies[0].delivery.status).to.eql('accepted');",
+                            "});"
+                        ]
+                    }
+                }
+            ]
+        }
+    ]
+}

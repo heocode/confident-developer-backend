@@ -62,6 +62,29 @@ describe('email delivery worker', () => {
     ])
   })
 
+  it('delegates kind-specific atomic acceptance when the handler provides it', async () => {
+    const acceptances = []
+    const claimed = delivery({ kind: 'contact-admin-reply' })
+    const handler = {
+      send: async () => ({ providerMessageId: 'provider-id' }),
+      async accept(...arguments_) {
+        acceptances.push(arguments_)
+        return { status: 'accepted' }
+      },
+    }
+    const worker = createEmailDeliveryWorker({
+      deliveryService: {
+        claimNextDelivery: async () => claimed,
+        markDeliveryAccepted: async () => assert.fail('generic acceptance must not run'),
+      },
+      handlers: new Map([['contact-admin-reply', handler]]),
+      logger: createLogger(),
+    })
+
+    await worker.processNext()
+    assert.deepEqual(acceptances, [[claimed, 'provider-id']])
+  })
+
   it('reschedules retryable failures without logging inquiry content', async () => {
     const retries = []
     const logger = createLogger()

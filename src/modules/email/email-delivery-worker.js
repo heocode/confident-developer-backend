@@ -61,12 +61,23 @@ export function createEmailDeliveryWorker({
         })
       }
 
-      const result = await handler(delivery)
-      const updated = await deliveryService.markDeliveryAccepted(
-        id,
-        delivery.attemptCount,
-        result.providerMessageId,
-      )
+      const send = typeof handler === 'function' ? handler : handler.send
+      if (typeof send !== 'function') {
+        throw new EmailProviderError('Email delivery handler is not configured', {
+          code: 'configuration',
+          retryable: false,
+        })
+      }
+
+      const result = await send(delivery)
+      const updated =
+        typeof handler.accept === 'function'
+          ? await handler.accept(delivery, result.providerMessageId)
+          : await deliveryService.markDeliveryAccepted(
+              id,
+              delivery.attemptCount,
+              result.providerMessageId,
+            )
 
       if (updated) {
         logger.info('Email delivery accepted', {

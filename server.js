@@ -8,9 +8,14 @@ import { createApp } from './src/app.js'
 import { connectToDatabase } from './src/config/database.js'
 import { loadEnvironment } from './src/config/environment.js'
 import { createContactOwnerNotificationHandler } from './src/modules/contact/contact-owner-notification-handler.js'
+import { createContactAdminReplyHandler } from './src/modules/contact/contact-admin-reply-handler.js'
+import { createContactReplyService } from './src/modules/contact/contact-reply-service.js'
 import { createEmailDeliveryService } from './src/modules/email/email-delivery-service.js'
 import { createEmailDeliveryWorker } from './src/modules/email/email-delivery-worker.js'
-import { contactOwnerNotificationKind } from './src/modules/email/email-delivery-values.js'
+import {
+  contactAdminReplyKind,
+  contactOwnerNotificationKind,
+} from './src/modules/email/email-delivery-values.js'
 import { createResendEmailProvider } from './src/modules/email/providers/resend-email-provider.js'
 
 const environment = loadEnvironment()
@@ -19,6 +24,7 @@ async function startServer() {
   await connectToDatabase(environment.mongodbUri)
 
   const emailDeliveryService = createEmailDeliveryService()
+  const contactReplyService = createContactReplyService({ emailDeliveryService })
   let emailDeliveryWorker
 
   if (environment.email) {
@@ -28,15 +34,26 @@ async function startServer() {
       fromEmail: environment.email.fromEmail,
       notificationToEmail: environment.email.notificationToEmail,
     })
+    const contactAdminReplyHandler = createContactAdminReplyHandler({
+      emailProvider,
+      fromEmail: environment.email.fromEmail,
+      replyToEmail: environment.email.notificationToEmail,
+      contactReplyService,
+    })
     emailDeliveryWorker = createEmailDeliveryWorker({
       deliveryService: emailDeliveryService,
-      handlers: new Map([[contactOwnerNotificationKind, contactNotificationHandler]]),
+      handlers: new Map([
+        [contactOwnerNotificationKind, contactNotificationHandler],
+        [contactAdminReplyKind, contactAdminReplyHandler],
+      ]),
     })
   } else {
     console.warn('Email delivery worker is disabled because email configuration is not set')
   }
 
-  const server = createServer(createApp({ environment, emailDeliveryService }))
+  const server = createServer(
+    createApp({ environment, emailDeliveryService, contactReplyService }),
+  )
 
   server.listen(environment.port, () => {
     console.log(`Server listening on port ${environment.port}`)
