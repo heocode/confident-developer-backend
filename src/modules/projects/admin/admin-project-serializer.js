@@ -24,6 +24,12 @@ export function serializeAdminProject(project) {
     scope: source.scope,
     position: source.position,
     themeColor: source.themeColor,
+    projectsPageTheme: source.projectsPageTheme
+      ? {
+          tabColor: source.projectsPageTheme.tabColor,
+          panelColor: source.projectsPageTheme.panelColor,
+        }
+      : source.projectsPageTheme,
     status: source.status,
     timeline: source.timeline
       ? {

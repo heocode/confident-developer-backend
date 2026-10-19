@@ -62,6 +62,26 @@ const homePlacementSchema = new mongoose.Schema(
   { _id: false },
 )
 
+const projectsPageThemeSchema = new mongoose.Schema(
+  {
+    tabColor: {
+      type: String,
+      required: true,
+      trim: true,
+      uppercase: true,
+      match: /^#[0-9A-F]{6}$/,
+    },
+    panelColor: {
+      type: String,
+      required: true,
+      trim: true,
+      uppercase: true,
+      match: /^#[0-9A-F]{6}$/,
+    },
+  },
+  { _id: false },
+)
+
 const portfolioProjectSchema = new mongoose.Schema(
   {
     slug: {
@@ -84,6 +104,7 @@ const portfolioProjectSchema = new mongoose.Schema(
       uppercase: true,
       match: /^#[0-9A-F]{6}$/,
     },
+    projectsPageTheme: { type: projectsPageThemeSchema, default: undefined },
     status: { type: String, enum: projectStatuses, default: 'draft', required: true },
     timeline: { type: timelineSchema, default: undefined },
     home: { type: homePlacementSchema, default: () => ({}) },
@@ -148,6 +169,10 @@ portfolioProjectSchema.pre('validate', function validateProjectState() {
 
   for (const field of requiredTextFields) {
     if (!hasText(this[field])) this.invalidate(field, `${field} is required for published projects`)
+  }
+
+  if (!this.projectsPageTheme) {
+    this.invalidate('projectsPageTheme', 'Projects page theme is required for published projects')
   }
 
   if (!this.timeline?.startDate) {

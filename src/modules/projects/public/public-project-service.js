@@ -10,6 +10,7 @@ const PUBLIC_PROJECT_FIELDS = [
   'summary',
   'position',
   'themeColor',
+  'projectsPageTheme',
   'timeline',
   'home.featured',
   'home.primary',

@@ -11,6 +11,12 @@ const slugSchema = z
   .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'Slug must use lowercase letters, numbers, and hyphens')
 const optionalText = (maximum) => z.string().trim().max(maximum).nullable().optional()
 const integer = (minimum = 0, maximum = 999) => z.number().int().min(minimum).max(maximum)
+const hexColorSchema = z.string().trim().regex(/^#[0-9a-f]{6}$/i, 'Color must use #RRGGBB format')
+
+const projectsPageThemeSchema = z.strictObject({
+  tabColor: hexColorSchema,
+  panelColor: hexColorSchema,
+})
 
 const calendarDateSchema = z
   .string()
@@ -79,7 +85,8 @@ function writableProjectFields({ allowNestedIds }) {
     summary: optionalText(1_500),
     scope: optionalText(5_000),
     position: optionalText(160),
-    themeColor: z.string().trim().regex(/^#[0-9a-f]{6}$/i, 'Theme color must use #RRGGBB format').nullable().optional(),
+    themeColor: hexColorSchema.nullable().optional(),
+    projectsPageTheme: projectsPageThemeSchema.nullable().optional(),
     status: z.enum(projectStatuses).optional(),
     timeline: timelineSchema.nullable().optional(),
     home: homeSchema.optional(),

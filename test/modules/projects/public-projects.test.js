@@ -39,6 +39,7 @@ function publicProject(overrides = {}) {
     scope: 'Product design and full-stack development.',
     position: 'Founder & Developer',
     themeColor: '#3F6EB5',
+    projectsPageTheme: { tabColor: '#15418A', panelColor: '#394E70' },
     status: 'published',
     timeline: {
       startDate: new Date('2026-06-01T00:00:00.000Z'),
@@ -161,6 +162,10 @@ describe('public project HTTP contract', () => {
     )
     assert.equal(body.data[0].logo.url.endsWith('?preset=logo'), true)
     assert.equal(body.data[0].homePreview.url.endsWith('?preset=homePreview'), true)
+    assert.deepEqual(body.data[0].projectsPageTheme, {
+      tabColor: '#15418A',
+      panelColor: '#394E70',
+    })
     assert.equal('scope' in body.data[0], false)
     assert.equal('screenshots' in body.data[0], false)
 
@@ -263,6 +268,7 @@ describe('public project service', () => {
     assert.deepEqual(queries[1].state.sort, { 'home.order': 1, _id: 1 })
     assert.equal(queries[0].state.select.includes('status'), false)
     assert.equal(queries[0].state.select.includes('projectsPageOrder'), false)
+    assert.equal(queries[0].state.select.includes('projectsPageTheme'), true)
     assert.deepEqual(
       queries[0].state.populate.map(({ path }) => path),
       ['logoAsset', 'homePreviewAsset'],

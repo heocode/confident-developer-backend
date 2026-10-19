@@ -35,6 +35,12 @@ export function serializePublicProject(project, { includeDetails = false, mediaS
     summary: source.summary,
     position: source.position,
     themeColor: source.themeColor ?? null,
+    projectsPageTheme: source.projectsPageTheme
+      ? {
+          tabColor: source.projectsPageTheme.tabColor,
+          panelColor: source.projectsPageTheme.panelColor,
+        }
+      : null,
     timeline: {
       startDate: serializeDate(source.timeline.startDate),
       endDate: serializeDate(source.timeline.endDate),

@@ -27,6 +27,7 @@ function publishedProject(overrides = {}) {
     scope: 'A campus networking platform for verified students.',
     position: 'Founder & Developer',
     themeColor: '#3f6eb5',
+    projectsPageTheme: { tabColor: '#15418a', panelColor: '#394e70' },
     status: 'published',
     timeline: { startDate: '2026-06-01', endDate: null },
     projectsPageOrder: 1,
@@ -66,6 +67,10 @@ describe('PortfolioProject model', () => {
     await project.validate()
 
     assert.equal(project.themeColor, '#3F6EB5')
+    assert.deepEqual(project.projectsPageTheme.toObject(), {
+      tabColor: '#15418A',
+      panelColor: '#394E70',
+    })
     assert.deepEqual(
       project.buildBreakdown.map(({ percentage }) => percentage),
       [100, 100, 80],
@@ -97,6 +102,7 @@ describe('PortfolioProject model', () => {
       assert.ok(error.errors.scope)
       assert.ok(error.errors.position)
       assert.ok(error.errors.themeColor)
+      assert.ok(error.errors.projectsPageTheme)
       assert.ok(error.errors['timeline.startDate'])
       assert.ok(error.errors.logoAsset)
       assert.ok(error.errors.screenshots)
@@ -120,6 +126,7 @@ describe('PortfolioProject model', () => {
       slug: 'Invalid Slug',
       title: 'Invalid project',
       themeColor: '#FFF',
+      projectsPageTheme: { tabColor: '#123', panelColor: 'blue' },
       timeline: { startDate: '2026-10-01', endDate: '2026-09-01' },
       home: { featured: false, primary: true },
       buildBreakdown: [{ label: 'Backend', percentage: 87.5 }],
@@ -129,6 +136,8 @@ describe('PortfolioProject model', () => {
     await assert.rejects(project.validate(), (error) => {
       assert.ok(error.errors.slug)
       assert.ok(error.errors.themeColor)
+      assert.ok(error.errors['projectsPageTheme.tabColor'])
+      assert.ok(error.errors['projectsPageTheme.panelColor'])
       assert.ok(error.errors['timeline.endDate'])
       assert.ok(error.errors['home.primary'])
       assert.ok(error.errors['buildBreakdown.0.percentage'])

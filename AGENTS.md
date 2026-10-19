@@ -151,6 +151,7 @@ Current project persistence decisions:
 - `MediaAsset` uses `media_assets`; project documents reference media by ObjectId and do not embed provider URLs or binary data.
 - Draft projects require slug and title. Publication requires tagline, summary, complete Projects-page content, and media; featured publication additionally requires Home preview media and breakdown data.
 - `themeColor` stores the individual project's normalized six-digit HEX color. It does not represent a role, service, or technology category.
+- `projectsPageTheme` stores the Projects-page tab and inner-panel colors as normalized six-digit HEX values. The browser-frame layer is derived by the frontend from `tabColor` at 75% opacity, avoiding slug-specific palettes while preserving the approved design.
 - `position` is the single role label displayed by the approved design. Technologies are not stored on projects.
 - Build-breakdown percentages are independent integers from 0 to 100 and are not required to sum to 100.
 - Build-breakdown, link, and screenshot entries use stable Mongoose subdocument IDs. Their MongoDB array position is the display-order source of truth; do not add per-item order fields.

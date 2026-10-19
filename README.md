@@ -65,7 +65,7 @@ Public project endpoints are:
 - `GET /api/v1/projects?placement=home`
 - `GET /api/v1/projects/:slug`
 
-They return only published projects. The collection is ordered for the Projects page by default, while `placement=home` returns featured Home projects in their configured order. Detail lookup uses the public slug rather than a MongoDB ID. Successful public responses are briefly cacheable by shared CDNs; validation and not-found errors are not.
+They return only published projects. The collection is ordered for the Projects page by default, while `placement=home` returns featured Home projects in their configured order. The common project representation includes `themeColor` for the existing brand treatment and `projectsPageTheme.tabColor` plus `projectsPageTheme.panelColor` for Projects-page chrome; the frontend derives the translucent browser frame from `tabColor`. Detail lookup uses the public slug rather than a MongoDB ID and adds `scope` plus ordered screenshots. Successful public responses are briefly cacheable by shared CDNs; validation and not-found errors are not.
 
 Public service endpoints are:
 

@@ -57,7 +57,16 @@ describe('admin project HTTP contract', () => {
   const projectService = {
     async createProject(input) {
       calls.create.push(input)
-      return projectData({ ...input, themeColor: input.themeColor?.toUpperCase() })
+      return projectData({
+        ...input,
+        themeColor: input.themeColor?.toUpperCase(),
+        projectsPageTheme: input.projectsPageTheme
+          ? {
+              tabColor: input.projectsPageTheme.tabColor.toUpperCase(),
+              panelColor: input.projectsPageTheme.panelColor.toUpperCase(),
+            }
+          : input.projectsPageTheme,
+      })
     },
     async listProjects(query) {
       calls.list.push(query)
@@ -124,7 +133,12 @@ describe('admin project HTTP contract', () => {
         'content-type': 'application/json',
         origin: frontendOrigin,
       },
-      body: JSON.stringify({ slug: 'unicon', title: 'Unicon', themeColor: '#3f6eb5' }),
+      body: JSON.stringify({
+        slug: 'unicon',
+        title: 'Unicon',
+        themeColor: '#3f6eb5',
+        projectsPageTheme: { tabColor: '#15418a', panelColor: '#394e70' },
+      }),
     })
 
     assert.equal(response.status, 201)
@@ -133,12 +147,17 @@ describe('admin project HTTP contract', () => {
     assert.equal(body.message, 'Project created successfully.')
     assert.equal(body.data.id, projectId)
     assert.equal(body.data.themeColor, '#3F6EB5')
+    assert.deepEqual(body.data.projectsPageTheme, {
+      tabColor: '#15418A',
+      panelColor: '#394E70',
+    })
     assert.equal('_id' in body.data, false)
     assert.equal('__v' in body.data, false)
     assert.deepEqual(calls.create.at(-1), {
       slug: 'unicon',
       title: 'Unicon',
       themeColor: '#3f6eb5',
+      projectsPageTheme: { tabColor: '#15418a', panelColor: '#394e70' },
     })
   })
 
@@ -269,6 +288,21 @@ describe('admin project HTTP contract', () => {
       body: JSON.stringify({ screenshots: [{ asset: assetId, alt: 'Dashboard', order: 1 }] }),
     })
     assert.equal(obsoleteScreenshotOrder.response.status, 400)
+
+    const incompleteProjectsPageTheme = await requestJson(
+      baseUrl,
+      `/api/v1/admin/projects/${projectId}`,
+      {
+        method: 'PATCH',
+        headers: {
+          cookie: sessionCookie,
+          'content-type': 'application/json',
+          origin: frontendOrigin,
+        },
+        body: JSON.stringify({ projectsPageTheme: { tabColor: '#15418A' } }),
+      },
+    )
+    assert.equal(incompleteProjectsPageTheme.response.status, 400)
     assert.equal(calls.create.length, 1)
   })
 })
@@ -278,6 +312,7 @@ describe('admin project serializer', () => {
     const project = new PortfolioProject({
       slug: 'unicon',
       title: 'Unicon',
+      projectsPageTheme: { tabColor: '#15418a', panelColor: '#394e70' },
       buildBreakdown: [
         { label: 'Development', percentage: 100 },
         { label: 'Design', percentage: 90 },
@@ -294,6 +329,10 @@ describe('admin project serializer', () => {
     )
     assert.equal(serialized.buildBreakdown.every((item) => /^[a-f\d]{24}$/.test(item.id)), true)
     assert.equal(serialized.links[0].icon, 'website')
+    assert.deepEqual(serialized.projectsPageTheme, {
+      tabColor: '#15418A',
+      panelColor: '#394E70',
+    })
     assert.match(serialized.links[0].id, /^[a-f\d]{24}$/)
     assert.match(serialized.screenshots[0].id, /^[a-f\d]{24}$/)
     assert.equal('order' in serialized.screenshots[0], false)
@@ -321,6 +360,7 @@ function publishedFeaturedProject(overrides = {}) {
     scope: 'Product design and full-stack development.',
     position: 'Founder & Developer',
     themeColor: '#3F6EB5',
+    projectsPageTheme: { tabColor: '#15418A', panelColor: '#394E70' },
     status: 'published',
     timeline: { startDate: new Date('2026-06-01T00:00:00.000Z') },
     home: { featured: true, primary: true, order: 0 },
