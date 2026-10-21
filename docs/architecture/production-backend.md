@@ -104,9 +104,10 @@ Implemented service routes:
 ```text
 GET /api/v1/services
 GET /api/v1/services?placement=home
+GET /api/v1/services/:slug
 ```
 
-The default collection contains published services ordered by `servicesPageOrder` and `_id`. Home placement contains only published featured services ordered by `home.order` and `_id`. Both continue to use the same Home-ready public representation. Dedicated Services-page persistence is implemented, while public slug detail remains deferred until its composed serializer and content import are implemented.
+The default collection contains published services ordered by `servicesPageOrder` and `_id`. Home placement contains only published featured services ordered by `home.order` and `_id`. Both continue to use the same Home-ready public representation. Slug detail composes the complete dedicated-page representation from Service, Project, and MediaAsset documents while preserving every stored array order.
 
 The implemented GitHub summary route is:
 
@@ -145,7 +146,6 @@ It returns only approved references with page-based pagination and an explicit p
 Remaining planned public read routes:
 
 ```text
-GET /api/v1/services/:slug
 GET /api/v1/posts
 GET /api/v1/posts/:slug
 ```
@@ -359,7 +359,9 @@ Production services are stored in the explicit `portfolio_services` collection. 
 
 The icon key selects one of the frontend-owned service SVGs, and the tone key selects a frontend-owned CSS theme. Tool keys similarly select frontend-owned icons while their labels remain backend content. The API does not store or return source paths, imported SVG modules, CSS class names, or color literals. Array position is the display-order source of truth; there are no primary, featured, or supporting showcase-media roles.
 
-Draft services may store partial detail content. Publication requires description, icon, tone, at least one capability, at least one tool, one to three related projects, and exactly five showcase assets. Related projects must exist. Showcase references must resolve to active image, video, or animation MediaAssets; documents are rejected. Home still contains at most four published featured services. Admin PATCH treats every supplied detail array as its complete ordered next state, while omitted arrays remain unchanged. The existing Home public serializer remains unchanged; composed `GET /api/v1/services/:slug` delivery is the next feature boundary.
+Draft services may store partial detail content. Publication requires description, icon, tone, at least one capability, at least one tool, one to three related projects, and exactly five showcase assets. Related projects must exist. Showcase references must resolve to active image, video, or animation MediaAssets; documents are rejected. Home still contains at most four published featured services. Admin PATCH treats every supplied detail array as its complete ordered next state, while omitted arrays remain unchanged.
+
+Public slug detail exposes only published, complete services. It filters related projects to published records with active image logos while preserving their configured order and requires at least one usable project. All five showcase positions must remain active and usable; motion assets require active image previews. Missing, unpublished, and incomplete records are indistinguishable `404` responses. The serializer exposes one provider-neutral media shape with kind, format, delivery URL, accessible label, dimensions, duration, and optional preview. Cloudinary delivery construction remains inside the Media provider. Successful detail uses the shared 60-second CDN cache and five-minute stale window; errors are not cacheable.
 
 ### Reference
 

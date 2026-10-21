@@ -71,8 +71,9 @@ Public service endpoints are:
 
 - `GET /api/v1/services`
 - `GET /api/v1/services?placement=home`
+- `GET /api/v1/services/:slug`
 
-They return only published services. The default collection uses Services-page order, while Home placement filters featured services and uses its own configured order. Icon and tone values are stable keys for frontend-owned SVG and CSS mappings; the API never returns frontend asset paths or color literals.
+They return only published services. The default collection uses Services-page order, while Home placement filters featured services and uses its own configured order. Slug detail composes ordered capabilities and tools, available related-project cards, and exactly five universal showcase media objects with backend-generated delivery URLs and motion previews. Icon, tone, and tool values use stable keys for frontend-owned mappings; the API never returns frontend asset paths, color literals, storage-provider IDs, or lifecycle metadata.
 
 The public GitHub summary endpoint is:
 

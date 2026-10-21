@@ -86,7 +86,10 @@ export function createV1Router({
       submissionRateLimitOptions: referenceSubmissionRateLimitOptions,
     }),
   )
-  router.use('/services', createPublicServiceRouter({ serviceService: publicServiceService }))
+  router.use(
+    '/services',
+    createPublicServiceRouter({ serviceService: publicServiceService, mediaService }),
+  )
   router.use(
     '/admin',
     noStore,

@@ -180,7 +180,10 @@ Current service persistence decisions:
 - Capabilities are ordered unique strings. Tools are ordered `{ key, label }` values using the approved frontend-owned icon-key allowlist. Related projects and showcase assets are ordered unique ObjectId references; no media item has a primary, featured, or supporting role.
 - Related projects must exist whenever referenced. Showcase assets must be active image, video, or animation MediaAssets; documents are not service showcase content. Media deletion is blocked while a service references the asset.
 - Admin PATCH treats every supplied capabilities, tools, related-projects, or showcase-assets array as its complete next ordered state. Omitted arrays remain unchanged.
-- `GET /api/v1/services/:slug`, its composed public serializer, and the dedicated Services-page importer remain deferred. The existing list and Home public representation must remain unchanged.
+- Public detail is available at `GET /api/v1/services/:slug`. It returns only published complete services, filters related projects to published records with active logos, requires at least one usable project and all five active showcase assets, and hides missing or incomplete records behind the same `404`.
+- The public detail serializer preserves stored array order and exposes one provider-neutral showcase representation containing kind, format, delivery URL, accessible label, dimensions, duration, and an image preview for video or animation. It exposes no provider asset IDs, lifecycle fields, or internal ordering fields.
+- Successful public service detail uses the shared 60-second CDN cache plus five-minute stale-while-revalidate window. Validation, not-found, and server errors are not cacheable. Existing list and Home public representations remain unchanged.
+- The dedicated Services-page importer remains deferred.
 - Initial Home services are defined in `scripts/service-import-manifest.js`. Its dry-run remains offline, but interactive apply must fail before login or external changes until the dedicated Services-page importer supplies complete detail content; it must never move published Home services into incomplete drafts.
 
 Current GitHub summary decisions:
