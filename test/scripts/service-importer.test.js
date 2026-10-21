@@ -2,7 +2,11 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
 import { serviceImportManifest } from '../../scripts/service-import-manifest.js'
-import { buildServiceImportPlan, buildServicePayload } from '../../scripts/service-importer.js'
+import {
+  buildServiceImportPlan,
+  buildServicePayload,
+  isServiceImportPlanPublishable,
+} from '../../scripts/service-importer.js'
 import { createImportApiClient } from '../../scripts/utils/import-api-client.js'
 
 describe('service importer', () => {
@@ -26,6 +30,7 @@ describe('service importer', () => {
 
     assert.equal(buildServicePayload(service).status, 'draft')
     assert.equal(buildServicePayload(service, { id: '68e7c0000000000000000001' }).status, 'draft')
+    assert.equal(isServiceImportPlanPublishable(buildServiceImportPlan(serviceImportManifest)), false)
   })
 
   it('rejects duplicate slugs and display orders', () => {

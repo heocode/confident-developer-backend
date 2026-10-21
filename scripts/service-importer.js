@@ -40,3 +40,13 @@ export function buildServicePayload(service, existingService = null) {
     ? updateAdminServiceBodySchema.parse(payload)
     : createAdminServiceBodySchema.parse(payload)
 }
+
+export function isServiceImportPlanPublishable(plan) {
+  return plan.services.every(
+    (service) =>
+      service.capabilities?.length > 0 &&
+      service.tools?.length > 0 &&
+      service.relatedProjects?.length > 0 &&
+      service.showcaseAssets?.length === 5,
+  )
+}

@@ -1,6 +1,8 @@
 import mongoose from 'mongoose'
 import createError from 'http-errors'
 
+import { MediaAsset } from '../../media/media-asset.js'
+import { PortfolioProject } from '../../projects/portfolio-project.js'
 import { PortfolioService } from '../portfolio-service.js'
 
 const MAX_PUBLISHED_HOME_SERVICES = 4
@@ -34,13 +36,48 @@ function applyServicePatch(service, patch) {
 
 export function createAdminServiceService({
   serviceModel = PortfolioService,
+  projectModel = PortfolioProject,
+  mediaAssetModel = MediaAsset,
   runInTransaction = runInMongoTransaction,
   now = () => new Date(),
 } = {}) {
+  async function validateRelatedProjects(service, session) {
+    if (service.relatedProjects.length === 0) return
+
+    const projectIds = service.relatedProjects.map((id) => id.toString())
+    const query = projectModel.countDocuments({ _id: { $in: projectIds } })
+    const projectCount = await useSession(query, session)
+
+    if (projectCount !== projectIds.length) {
+      throw createError(409, 'One or more related projects are missing')
+    }
+  }
+
+  async function validateShowcaseAssets(service, session) {
+    if (service.showcaseAssets.length === 0) return
+
+    const mediaAssetIds = service.showcaseAssets.map((id) => id.toString())
+    const query = mediaAssetModel.countDocuments({
+      _id: { $in: mediaAssetIds },
+      status: 'active',
+      $or: [
+        { kind: { $in: ['image', 'video', 'animation'] } },
+        { kind: { $exists: false } },
+      ],
+    })
+    const mediaAssetCount = await useSession(query, session)
+
+    if (mediaAssetCount !== mediaAssetIds.length) {
+      throw createError(409, 'One or more showcase media assets are missing, inactive, or unsupported')
+    }
+  }
+
   async function validateAndSave(service, session) {
     if (service.status === 'published' && !service.publishedAt) service.publishedAt = now()
 
     await service.validate()
+    await validateRelatedProjects(service, session)
+    await validateShowcaseAssets(service, session)
 
     if (service.status === 'published' && service.home.featured) {
       const query = serviceModel.countDocuments({

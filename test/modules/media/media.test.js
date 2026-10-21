@@ -106,6 +106,7 @@ describe('admin media HTTP contract', () => {
           profileResumeCount: 0,
           profileAvatarCount: 0,
           previewForCount: 0,
+          serviceShowcaseCount: 0,
         },
       }
     },
@@ -248,6 +249,7 @@ describe('admin media HTTP contract', () => {
       profileResumeCount: 0,
       profileAvatarCount: 0,
       previewForCount: 0,
+      serviceShowcaseCount: 0,
     })
   })
 
@@ -580,6 +582,7 @@ function createMediaServiceHarness({
   profileResumeCount = 0,
   profileAvatarCount = 0,
   previewForCount = 0,
+  serviceShowcaseCount = 0,
   previewAsset = null,
   assets = [],
   totalItems = 0,
@@ -629,6 +632,11 @@ function createMediaServiceHarness({
   const profileModel = {
     async countDocuments(filter) {
       return Object.hasOwn(filter, 'resumeAsset') ? profileResumeCount : profileAvatarCount
+    },
+  }
+  const serviceModel = {
+    async countDocuments() {
+      return serviceShowcaseCount
     },
   }
   const mediaProvider = {
@@ -681,7 +689,13 @@ function createMediaServiceHarness({
   }
 
   return {
-    service: createMediaService({ mediaModel, projectModel, profileModel, mediaProvider }),
+    service: createMediaService({
+      mediaModel,
+      projectModel,
+      profileModel,
+      serviceModel,
+      mediaProvider,
+    }),
     mediaProvider,
     state,
   }
@@ -795,6 +809,7 @@ describe('media service', () => {
       profileResumeCount: 0,
       profileAvatarCount: 0,
       previewForCount: 0,
+      serviceShowcaseCount: 0,
     })
 
     await assert.rejects(service.deleteAsset(mediaAssetId), (error) => error.status === 409)
@@ -813,6 +828,7 @@ describe('media service', () => {
       profileResumeCount: 1,
       profileAvatarCount: 0,
       previewForCount: 0,
+      serviceShowcaseCount: 0,
     })
     await assert.rejects(service.deleteAsset(mediaAssetId), (error) => error.status === 409)
     assert.deepEqual(state.providerDeletions, [])
@@ -829,6 +845,7 @@ describe('media service', () => {
       profileResumeCount: 0,
       profileAvatarCount: 1,
       previewForCount: 0,
+      serviceShowcaseCount: 0,
     })
     await assert.rejects(service.deleteAsset(mediaAssetId), (error) => error.status === 409)
     assert.deepEqual(state.providerDeletions, [])
@@ -841,6 +858,17 @@ describe('media service', () => {
     const result = await service.getAsset(mediaAssetId)
     assert.equal(result.usage.inUse, true)
     assert.equal(result.usage.previewForCount, 2)
+    await assert.rejects(service.deleteAsset(mediaAssetId), (error) => error.status === 409)
+    assert.deepEqual(state.providerDeletions, [])
+  })
+
+  it('blocks deletion while an asset is used in a service showcase', async () => {
+    const asset = mediaData()
+    const { service, state } = createMediaServiceHarness({ asset, serviceShowcaseCount: 1 })
+
+    const result = await service.getAsset(mediaAssetId)
+    assert.equal(result.usage.inUse, true)
+    assert.equal(result.usage.serviceShowcaseCount, 1)
     await assert.rejects(service.deleteAsset(mediaAssetId), (error) => error.status === 409)
     assert.deepEqual(state.providerDeletions, [])
   })

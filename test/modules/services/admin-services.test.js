@@ -12,6 +12,10 @@ import { PortfolioService } from '../../../src/modules/services/portfolio-servic
 const frontendOrigin = 'http://localhost:5173'
 const sessionCookie = 'cd_admin_session=service-session-token'
 const serviceId = '68e7a0000000000000000001'
+const projectId = '68e7a0000000000000000010'
+const showcaseAssetIds = [1, 2, 3, 4, 5].map(
+  (suffix) => `68e7a00000000000000000${10 + suffix}`,
+)
 
 function serviceData(overrides = {}) {
   return {
@@ -21,6 +25,10 @@ function serviceData(overrides = {}) {
     description: 'Building smooth, reliable mobile experiences.',
     icon: 'mobile-development',
     tone: 'mobile',
+    capabilities: [],
+    tools: [],
+    relatedProjects: [],
+    showcaseAssets: [],
     status: 'draft',
     home: { featured: true, order: 2 },
     servicesPageOrder: 2,
@@ -116,6 +124,13 @@ describe('admin service HTTP contract', () => {
       title: 'Mobile Development',
       icon: 'mobile-development',
       tone: 'mobile',
+      capabilities: ['Mobile Apps', 'API Integration'],
+      tools: [
+        { key: 'react', label: 'React' },
+        { key: 'expo', label: 'Expo' },
+      ],
+      relatedProjects: [projectId],
+      showcaseAssets: showcaseAssetIds,
       home: { featured: true, order: 2 },
     }
     const { response, body } = await requestJson(baseUrl, '/api/v1/admin/services', {
@@ -132,6 +147,10 @@ describe('admin service HTTP contract', () => {
     assert.equal(response.headers.get('cache-control'), 'private, no-store')
     assert.equal(body.data.id, serviceId)
     assert.equal(body.data.icon, 'mobile-development')
+    assert.deepEqual(body.data.capabilities, payload.capabilities)
+    assert.deepEqual(body.data.tools, payload.tools)
+    assert.deepEqual(body.data.relatedProjects, [projectId])
+    assert.deepEqual(body.data.showcaseAssets, showcaseAssetIds)
     assert.equal('_id' in body.data, false)
     assert.equal('__v' in body.data, false)
     assert.deepEqual(calls.create.at(-1), payload)
@@ -184,6 +203,10 @@ describe('admin service HTTP contract', () => {
       { tone: '#ff0000' },
       { publishedAt: '2026-10-14T12:00:00.000Z' },
       { home: {} },
+      { capabilities: ['API Integration', 'api integration'] },
+      { tools: [{ key: 'unknown-tool', label: 'Unknown' }] },
+      { relatedProjects: [projectId, projectId] },
+      { showcaseAssets: [showcaseAssetIds[0], showcaseAssetIds[0]] },
     ]) {
       const result = await requestJson(baseUrl, `/api/v1/admin/services/${serviceId}`, {
         method: 'PATCH',
@@ -205,6 +228,10 @@ describe('admin service serializer', () => {
 
     assert.equal(serialized.id, serviceId)
     assert.deepEqual(serialized.home, { featured: true, order: 2 })
+    assert.deepEqual(serialized.capabilities, [])
+    assert.deepEqual(serialized.tools, [])
+    assert.deepEqual(serialized.relatedProjects, [])
+    assert.deepEqual(serialized.showcaseAssets, [])
     assert.equal('_id' in serialized, false)
     assert.equal('__v' in serialized, false)
   })
@@ -228,14 +255,34 @@ function publishedHomeService(overrides = {}) {
     description: 'Building smooth, reliable mobile experiences.',
     icon: 'mobile-development',
     tone: 'mobile',
+    capabilities: ['Mobile Apps', 'Cross-Platform Development'],
+    tools: [
+      { key: 'react', label: 'React' },
+      { key: 'typescript', label: 'TypeScript' },
+      { key: 'expo', label: 'Expo' },
+    ],
+    relatedProjects: [projectId],
+    showcaseAssets: showcaseAssetIds,
     status: 'published',
     home: { featured: true, order: 2 },
     ...overrides,
   }
 }
 
-function createServiceHarness({ homeCount = 0, existingService = null } = {}) {
-  const state = { saved: [], deleted: [], findFilter: undefined, sort: undefined }
+function createServiceHarness({
+  homeCount = 0,
+  existingService = null,
+  projectCount = 1,
+  mediaAssetCount = 5,
+} = {}) {
+  const state = {
+    saved: [],
+    deleted: [],
+    findFilter: undefined,
+    sort: undefined,
+    projectFilter: undefined,
+    mediaAssetFilter: undefined,
+  }
   const session = { id: 'service-test-session' }
 
   function ServiceModel(values) {
@@ -262,9 +309,23 @@ function createServiceHarness({ homeCount = 0, existingService = null } = {}) {
       },
     }
   }
+  const projectModel = {
+    countDocuments(filter) {
+      state.projectFilter = filter
+      return sessionResult(projectCount)
+    },
+  }
+  const mediaAssetModel = {
+    countDocuments(filter) {
+      state.mediaAssetFilter = filter
+      return sessionResult(mediaAssetCount)
+    },
+  }
 
   const service = createAdminServiceService({
     serviceModel: ServiceModel,
+    projectModel,
+    mediaAssetModel,
     runInTransaction: (operation) => operation(session),
     now: () => new Date('2026-10-14T15:00:00.000Z'),
   })
@@ -280,6 +341,9 @@ describe('admin service business logic', () => {
 
     assert.equal(created.publishedAt.toISOString(), '2026-10-14T15:00:00.000Z')
     assert.equal(state.saved[0].options.session, session)
+    assert.deepEqual(state.projectFilter, { _id: { $in: [projectId] } })
+    assert.equal(state.mediaAssetFilter.status, 'active')
+    assert.deepEqual(state.mediaAssetFilter._id.$in, showcaseAssetIds)
   })
 
   it('rejects a fifth published Home service', async () => {
@@ -305,6 +369,47 @@ describe('admin service business logic', () => {
     const updated = await service.updateService(existingService.id, { home: { order: 4 } })
 
     assert.deepEqual(updated.home.toObject(), { featured: true, order: 4 })
+  })
+
+  it('replaces ordered detail arrays and validates every linked document', async () => {
+    const existingService = new PortfolioService({
+      slug: 'mobile-development',
+      title: 'Mobile Development',
+      capabilities: ['Mobile Apps'],
+    })
+    existingService.save = async () => existingService
+    const { service, state } = createServiceHarness({ existingService })
+
+    const updated = await service.updateService(existingService.id, {
+      capabilities: ['Navigation', 'Authentication'],
+      relatedProjects: [projectId],
+      showcaseAssets: showcaseAssetIds,
+    })
+
+    assert.deepEqual(updated.capabilities, ['Navigation', 'Authentication'])
+    assert.deepEqual(updated.relatedProjects.map(String), [projectId])
+    assert.deepEqual(updated.showcaseAssets.map(String), showcaseAssetIds)
+    assert.deepEqual(state.projectFilter, { _id: { $in: [projectId] } })
+    assert.deepEqual(state.mediaAssetFilter._id.$in, showcaseAssetIds)
+  })
+
+  it('rejects missing projects and inactive or unsupported showcase assets', async () => {
+    const missingProject = createServiceHarness({ projectCount: 0 })
+    await assert.rejects(missingProject.service.createService(publishedHomeService()), (error) => {
+      assert.equal(error.status, 409)
+      assert.equal(error.message, 'One or more related projects are missing')
+      return true
+    })
+
+    const invalidMedia = createServiceHarness({ mediaAssetCount: 4 })
+    await assert.rejects(invalidMedia.service.createService(publishedHomeService()), (error) => {
+      assert.equal(error.status, 409)
+      assert.equal(
+        error.message,
+        'One or more showcase media assets are missing, inactive, or unsupported',
+      )
+      return true
+    })
   })
 
   it('uses deterministic admin ordering and returns not-found errors', async () => {

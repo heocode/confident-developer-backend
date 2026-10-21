@@ -21,6 +21,10 @@ export function serializeAdminService(service) {
     description: source.description,
     icon: source.icon,
     tone: source.tone,
+    capabilities: [...(source.capabilities ?? [])],
+    tools: (source.tools ?? []).map((tool) => ({ key: tool.key, label: tool.label })),
+    relatedProjects: (source.relatedProjects ?? []).map(serializeId),
+    showcaseAssets: (source.showcaseAssets ?? []).map(serializeId),
     status: source.status,
     home: source.home
       ? {

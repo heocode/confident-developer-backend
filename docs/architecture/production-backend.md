@@ -106,7 +106,7 @@ GET /api/v1/services
 GET /api/v1/services?placement=home
 ```
 
-The default collection contains published services ordered by `servicesPageOrder` and `_id`. Home placement contains only published featured services ordered by `home.order` and `_id`. Both use the same Home-ready public representation; detail lookup is intentionally deferred until the dedicated Services page fields and original assets are implemented.
+The default collection contains published services ordered by `servicesPageOrder` and `_id`. Home placement contains only published featured services ordered by `home.order` and `_id`. Both continue to use the same Home-ready public representation. Dedicated Services-page persistence is implemented, while public slug detail remains deferred until its composed serializer and content import are implemented.
 
 The implemented GitHub summary route is:
 
@@ -355,11 +355,11 @@ Project color describes the visual identity of the individual project, not a dev
 
 ### Service
 
-Production services are stored in the explicit `portfolio_services` collection. The Home-ready model contains a unique stable slug, title, description, `draft`/`published`/`archived` state, allowlisted icon and tone keys, Home placement and order, a separate Services-page order, server-owned first-publication time, and persistence timestamps.
+Production services are stored in the explicit `portfolio_services` collection. The model contains a unique stable slug, title, description, `draft`/`published`/`archived` state, allowlisted icon and tone keys, Home placement and order, a separate Services-page order, ordered capabilities and tools, ordered related-project references, ordered showcase-media references, server-owned first-publication time, and persistence timestamps.
 
-The icon key selects one of the frontend-owned service SVGs, and the tone key selects a frontend-owned CSS theme. The API does not store or return source paths, imported SVG modules, CSS class names, or color literals. Published services require description, icon, and tone; Home contains at most four published featured services. Public serializers omit state, internal order values, timestamps, and MongoDB internals because response order is authoritative.
+The icon key selects one of the frontend-owned service SVGs, and the tone key selects a frontend-owned CSS theme. Tool keys similarly select frontend-owned icons while their labels remain backend content. The API does not store or return source paths, imported SVG modules, CSS class names, or color literals. Array position is the display-order source of truth; there are no primary, featured, or supporting showcase-media roles.
 
-Capabilities, tool presentation, related projects, showcase media, and slug detail are deliberately deferred until the dedicated Services page is implemented. They will extend this model without changing the Home list contract.
+Draft services may store partial detail content. Publication requires description, icon, tone, at least one capability, at least one tool, one to three related projects, and exactly five showcase assets. Related projects must exist. Showcase references must resolve to active image, video, or animation MediaAssets; documents are rejected. Home still contains at most four published featured services. Admin PATCH treats every supplied detail array as its complete ordered next state, while omitted arrays remain unchanged. The existing Home public serializer remains unchanged; composed `GET /api/v1/services/:slug` delivery is the next feature boundary.
 
 ### Reference
 

@@ -1,7 +1,11 @@
 import 'dotenv/config'
 
 import { serviceImportManifest } from './service-import-manifest.js'
-import { buildServiceImportPlan, buildServicePayload } from './service-importer.js'
+import {
+  buildServiceImportPlan,
+  buildServicePayload,
+  isServiceImportPlanPublishable,
+} from './service-importer.js'
 import {
   ImportApiError,
   createImportApiClient,
@@ -65,6 +69,12 @@ async function run() {
   if (options.dryRun) {
     console.log('Dry-run complete. No network requests or external changes were made.')
     return
+  }
+
+  if (!isServiceImportPlanPublishable(plan)) {
+    throw new Error(
+      'Interactive apply is disabled until the Services-page manifest includes complete detail content and media.',
+    )
   }
 
   requireInteractiveTerminal('Service import')

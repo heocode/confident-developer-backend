@@ -2,6 +2,7 @@ import createError from 'http-errors'
 
 import { SiteProfile } from '../profile/site-profile.js'
 import { PortfolioProject } from '../projects/portfolio-project.js'
+import { PortfolioService } from '../services/portfolio-service.js'
 import { MediaAsset } from './media-asset.js'
 
 function projectUsageFilter(mediaAssetId) {
@@ -26,6 +27,7 @@ export function createMediaService({
   mediaModel = MediaAsset,
   projectModel = PortfolioProject,
   profileModel = SiteProfile,
+  serviceModel = PortfolioService,
   mediaProvider,
 } = {}) {
   function requireProvider(providerName) {
@@ -93,19 +95,28 @@ export function createMediaService({
   }
 
   async function getUsage(mediaAssetId) {
-    const [projectCount, profileResumeCount, profileAvatarCount, previewForCount] = await Promise.all([
-      projectModel.countDocuments(projectUsageFilter(mediaAssetId)),
-      profileModel.countDocuments({ resumeAsset: mediaAssetId }),
-      profileModel.countDocuments({ 'publicIdentity.avatarAsset': mediaAssetId }),
-      mediaModel.countDocuments({ previewAsset: mediaAssetId }),
-    ])
+    const [projectCount, profileResumeCount, profileAvatarCount, previewForCount, serviceShowcaseCount] =
+      await Promise.all([
+        projectModel.countDocuments(projectUsageFilter(mediaAssetId)),
+        profileModel.countDocuments({ resumeAsset: mediaAssetId }),
+        profileModel.countDocuments({ 'publicIdentity.avatarAsset': mediaAssetId }),
+        mediaModel.countDocuments({ previewAsset: mediaAssetId }),
+        serviceModel.countDocuments({ showcaseAssets: mediaAssetId }),
+      ])
+    const totalUsage =
+      projectCount +
+      profileResumeCount +
+      profileAvatarCount +
+      previewForCount +
+      serviceShowcaseCount
 
     return {
-      inUse: projectCount + profileResumeCount + profileAvatarCount + previewForCount > 0,
+      inUse: totalUsage > 0,
       projectCount,
       profileResumeCount,
       profileAvatarCount,
       previewForCount,
+      serviceShowcaseCount,
     }
   }
 

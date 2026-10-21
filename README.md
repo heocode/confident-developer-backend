@@ -158,6 +158,8 @@ Authenticated service management endpoints are:
 - `PATCH /api/v1/admin/services/:id`
 - `DELETE /api/v1/admin/services/:id`
 
+Service writes accept ordered capabilities, tool `{ key, label }` entries, up to three related project IDs, and five universal showcase media IDs. Drafts may remain incomplete. Publication requires complete detail content, existing related projects, and five active image, video, or animation assets. Supplying an array in PATCH replaces that complete ordered array; omitted fields remain unchanged.
+
 The authenticated GitHub refresh endpoint is:
 
 - `POST /api/v1/admin/github/refresh`
@@ -209,7 +211,7 @@ Interrupted runs resume from `output/project-import-state.json`, which is ignore
 
 ## Initial service content import
 
-The service manifest in `scripts/service-import-manifest.js` contains the approved Product & UI/UX Design, Mobile Development, Web Development, and Backend & Architecture Home content. Its dry-run validates all content, presentation keys, and unique ordering without network access. Apply mode uses the authenticated Services API, updates records by slug, prepares all records as drafts, and asks separately before publication. As with project import, login rotates the existing administrator session and credentials are never accepted through command arguments or stored on disk.
+The service manifest in `scripts/service-import-manifest.js` contains the approved Product & UI/UX Design, Mobile Development, Web Development, and Backend & Architecture Home content. Its dry-run validates the legacy Home content, presentation keys, and unique ordering without network access. Interactive apply now fails before login or external changes until the dedicated Services-page importer supplies capabilities, tools, related projects, and showcase media; this prevents existing published Home content from being moved to incomplete drafts. Credentials are never accepted through command arguments or stored on disk.
 
 ## Coursework API
 

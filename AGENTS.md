@@ -173,12 +173,15 @@ Current project persistence decisions:
 Current service persistence decisions:
 
 - `PortfolioService` uses the explicit `portfolio_services` collection and never shares the coursework `services` collection.
-- Draft services require slug and title. Publication additionally requires description plus allowlisted `icon` and `tone` keys; `publishedAt` is server-owned and assigned on first publication.
+- Draft services require slug and title and may contain partial detail content. Publication additionally requires description, allowlisted `icon` and `tone`, at least one capability and tool, one to three related projects, exactly five showcase assets, and a server-owned first-publication date.
 - Service icons (`product-ui-ux`, `mobile-development`, `web-development`, and `backend-development`) identify frontend-owned SVG assets. Tones (`product`, `mobile`, `web`, and `backend`) identify frontend-owned visual themes; the backend stores no SVG paths, imported assets, CSS classes, or color literals.
 - Home placement uses `home.featured` and `home.order`; `servicesPageOrder` remains separate for the future dedicated Services page. The service layer limits Home to four published featured services inside a MongoDB transaction.
 - Protected CRUD is available at `/api/v1/admin/services` and `/:id`. Public reads are available at `GET /api/v1/services` and `GET /api/v1/services?placement=home`; both expose only published services through an explicit allowlist and deterministic server ordering.
-- Detail-only capabilities, tools, related projects, showcase media, and `GET /api/v1/services/:slug` are deferred until the dedicated Services page is implemented from its approved assets. Do not invent placeholder fields in the meantime.
-- Initial Home services are defined in `scripts/service-import-manifest.js`. `npm run services:import -- --dry-run` validates them offline; the interactive importer uses the existing authenticated Services API, prepares drafts before a separate publication confirmation, and is safely repeatable by slug.
+- Capabilities are ordered unique strings. Tools are ordered `{ key, label }` values using the approved frontend-owned icon-key allowlist. Related projects and showcase assets are ordered unique ObjectId references; no media item has a primary, featured, or supporting role.
+- Related projects must exist whenever referenced. Showcase assets must be active image, video, or animation MediaAssets; documents are not service showcase content. Media deletion is blocked while a service references the asset.
+- Admin PATCH treats every supplied capabilities, tools, related-projects, or showcase-assets array as its complete next ordered state. Omitted arrays remain unchanged.
+- `GET /api/v1/services/:slug`, its composed public serializer, and the dedicated Services-page importer remain deferred. The existing list and Home public representation must remain unchanged.
+- Initial Home services are defined in `scripts/service-import-manifest.js`. Its dry-run remains offline, but interactive apply must fail before login or external changes until the dedicated Services-page importer supplies complete detail content; it must never move published Home services into incomplete drafts.
 
 Current GitHub summary decisions:
 
@@ -270,7 +273,7 @@ Current media decisions:
 - Video and animation assets require a separate active image `previewAsset`. The relationship is reusable and provider-neutral; array placement in a future owning feature determines presentation rather than media-level primary or featured roles.
 - Media lists use page-based pagination with default limit 24, maximum limit 100, and descending `createdAt`/`_id` ordering.
 - Admin media serializers expose the delivery URL and useful metadata but omit provider asset IDs and persistence internals.
-- Media deletion is blocked while any project, the Site Profile resume, the Site Profile avatar, or another media asset's preview references the asset. Deleting motion media does not cascade to its preview. Unused assets become `pendingDeletion` before provider deletion; metadata is removed only after provider deletion succeeds or reports the asset already absent.
+- Media deletion is blocked while any project, service showcase, the Site Profile resume, the Site Profile avatar, or another media asset's preview references the asset. Deleting motion media does not cascade to its preview. Unused assets become `pendingDeletion` before provider deletion; metadata is removed only after provider deletion succeeds or reports the asset already absent.
 - Cloudinary environment values are optional as a complete group so the application can start before provider setup. Media provider operations return `503` until all three values are configured.
 - Public media serialization uses provider-neutral image and video delivery presets; raw Rive delivery is unchanged. Cloudinary-specific URL transformations remain inside its provider adapter; frontend code must not construct provider URLs.
 
