@@ -197,7 +197,7 @@ Authenticated media management endpoints are:
 - `PATCH /api/v1/admin/media/:id`
 - `DELETE /api/v1/admin/media/:id`
 
-Uploads go directly from the browser to Cloudinary using a backend-generated signature. The backend then verifies authoritative Cloudinary metadata before registration. Media assets distinguish images from documents; project media remains image-only, while the profile resume accepts only PDF. Media operations return `503` until `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, and `CLOUDINARY_API_SECRET` are configured together.
+Uploads go directly from the browser to Cloudinary using a backend-generated signature. An empty upload-signature body selects an image for backward compatibility; `kind` may select `image`, `video`, or `animation`. Registration then verifies authoritative Cloudinary metadata and requires an active image preview for MP4 and Rive assets. Media assets distinguish images, videos, Rive animations, and documents; project media and the profile avatar remain image-only, while the profile resume accepts only PDF. Media operations return `503` until `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, and `CLOUDINARY_API_SECRET` are configured together.
 
 ## Initial project content import
 

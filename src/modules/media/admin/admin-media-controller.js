@@ -2,8 +2,8 @@ import { serializeAdminMediaAsset } from './admin-media-serializer.js'
 
 export function createAdminMediaController({ mediaService }) {
   return {
-    createUploadSignature: async (_request, response) => {
-      const descriptor = await mediaService.createUploadDescriptor()
+    createUploadSignature: async (request, response) => {
+      const descriptor = await mediaService.createUploadDescriptor(request.validated.body.kind)
 
       response.json({
         success: true,

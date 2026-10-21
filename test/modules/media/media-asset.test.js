@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
-import { MediaAsset } from '../../../src/modules/media/media-asset.js'
+import {
+  MAX_ANIMATION_BYTES,
+  MAX_VIDEO_BYTES,
+  MediaAsset,
+} from '../../../src/modules/media/media-asset.js'
 
 function hasIndex(model, fields, expectedOptions = {}) {
   return model.schema.indexes().some(([indexFields, options]) => {
@@ -71,6 +75,49 @@ describe('MediaAsset model', () => {
       assert.ok(error.errors.bytes)
       return true
     })
+  })
+
+  it('stores constrained MP4 videos with an image preview', async () => {
+    const previewId = '68e6b0000000000000000002'
+    const video = new MediaAsset({
+      kind: 'video',
+      providerAssetId: 'service-promo-video',
+      secureUrl: 'https://res.cloudinary.com/example/video/upload/promo.mp4',
+      resourceType: 'video',
+      format: 'mp4',
+      width: 720,
+      height: 1280,
+      duration: 29.87,
+      bytes: 1_200_000,
+      previewAsset: previewId,
+      alt: 'Product design promo video',
+    })
+
+    await video.validate()
+
+    video.bytes = MAX_VIDEO_BYTES + 1
+    await assert.rejects(video.validate(), (error) => Boolean(error.errors.bytes))
+    video.bytes = 1_200_000
+    video.previewAsset = undefined
+    await assert.rejects(video.validate(), (error) => Boolean(error.errors.previewAsset))
+  })
+
+  it('stores Rive animations as raw assets with an image preview', async () => {
+    const animation = new MediaAsset({
+      kind: 'animation',
+      providerAssetId: 'service-rive-animation',
+      secureUrl: 'https://res.cloudinary.com/example/raw/upload/interaction.riv',
+      resourceType: 'raw',
+      format: 'riv',
+      bytes: MAX_ANIMATION_BYTES,
+      previewAsset: '68e6b0000000000000000002',
+      alt: 'Interactive product animation',
+    })
+
+    await animation.validate()
+
+    animation.width = 800
+    await assert.rejects(animation.validate(), (error) => Boolean(error.errors.width))
   })
 
   it('rejects insecure URLs and oversized image metadata', async () => {

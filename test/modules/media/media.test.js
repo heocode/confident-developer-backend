@@ -57,8 +57,8 @@ describe('admin media HTTP contract', () => {
   }
 
   const mediaService = {
-    createUploadDescriptor() {
-      calls.signature += 1
+    createUploadDescriptor(kind) {
+      calls.signature.push(kind)
       return {
         provider: 'cloudinary',
         upload: {
@@ -72,7 +72,22 @@ describe('admin media HTTP contract', () => {
     },
     async registerAsset(input) {
       calls.register.push(input)
-      return { asset: mediaData({ alt: input.alt }), created: true }
+      return {
+        asset: mediaData({
+          alt: input.alt,
+          kind: input.kind,
+          previewAsset: input.previewAsset,
+          ...(input.kind === 'video'
+            ? {
+                secureUrl: 'https://res.cloudinary.com/example/video/upload/promo.mp4',
+                resourceType: 'video',
+                format: 'mp4',
+                duration: 29.87,
+              }
+            : {}),
+        }),
+        created: true,
+      }
     },
     async listAssets(input) {
       calls.list.push(input)
@@ -85,7 +100,13 @@ describe('admin media HTTP contract', () => {
       calls.get.push(id)
       return {
         asset: mediaData(),
-        usage: { inUse: true, projectCount: 2, profileResumeCount: 0, profileAvatarCount: 0 },
+        usage: {
+          inUse: true,
+          projectCount: 2,
+          profileResumeCount: 0,
+          profileAvatarCount: 0,
+          previewForCount: 0,
+        },
       }
     },
     async updateAsset(id, input) {
@@ -98,7 +119,7 @@ describe('admin media HTTP contract', () => {
   }
 
   before(async () => {
-    calls = { signature: 0, register: [], list: [], get: [], update: [], delete: [] }
+    calls = { signature: [], register: [], list: [], get: [], update: [], delete: [] }
     const environment = loadEnvironment({ NODE_ENV: 'test', CLIENT_ORIGINS: frontendOrigin })
     const app = createApp({ environment, authService, mediaService })
 
@@ -139,7 +160,22 @@ describe('admin media HTTP contract', () => {
     assert.equal(body.data.provider, 'cloudinary')
     assert.equal(body.data.upload.fields.api_key, 'public-key')
     assert.equal(JSON.stringify(body).includes('private-secret'), false)
-    assert.equal(calls.signature, 1)
+    assert.deepEqual(calls.signature, ['image'])
+  })
+
+  it('selects the requested motion upload kind', async () => {
+    const { response } = await requestJson(baseUrl, '/api/v1/admin/media/upload-signature', {
+      method: 'POST',
+      headers: {
+        cookie: sessionCookie,
+        origin: frontendOrigin,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ kind: 'video' }),
+    })
+
+    assert.equal(response.status, 200)
+    assert.equal(calls.signature.at(-1), 'video')
   })
 
   it('registers an uploaded asset through an explicit admin serializer', async () => {
@@ -163,16 +199,44 @@ describe('admin media HTTP contract', () => {
     assert.equal('providerAssetId' in body.data, false)
     assert.equal('_id' in body.data, false)
     assert.equal('__v' in body.data, false)
+    assert.equal(body.data.duration, null)
+    assert.equal(body.data.previewAsset, null)
+    assert.equal(calls.register.at(-1).kind, 'image')
+  })
+
+  it('registers motion media with its image preview', async () => {
+    const previewAsset = '68e6b0000000000000000002'
+    const { response, body } = await requestJson(baseUrl, '/api/v1/admin/media', {
+      method: 'POST',
+      headers: {
+        cookie: sessionCookie,
+        origin: frontendOrigin,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        provider: 'cloudinary',
+        providerAssetId,
+        kind: 'video',
+        previewAsset,
+        alt: 'Product design promo',
+      }),
+    })
+
+    assert.equal(response.status, 201)
+    assert.equal(body.data.kind, 'video')
+    assert.equal(body.data.duration, 29.87)
+    assert.equal(body.data.previewAsset, previewAsset)
+    assert.equal(calls.register.at(-1).previewAsset, previewAsset)
   })
 
   it('returns paginated media and usage details', async () => {
-    const list = await requestJson(baseUrl, '/api/v1/admin/media?page=2&limit=12&status=active', {
+    const list = await requestJson(baseUrl, '/api/v1/admin/media?page=2&limit=12&status=active&kind=image', {
       headers: { cookie: sessionCookie },
     })
     assert.equal(list.response.status, 200)
     assert.equal(list.body.data.items.length, 1)
     assert.deepEqual(list.body.data.pagination, { page: 2, limit: 12, totalItems: 1, totalPages: 1 })
-    assert.deepEqual(calls.list.at(-1), { page: 2, limit: 12, status: 'active' })
+    assert.deepEqual(calls.list.at(-1), { page: 2, limit: 12, status: 'active', kind: 'image' })
 
     const detail = await requestJson(baseUrl, `/api/v1/admin/media/${mediaAssetId}`, {
       headers: { cookie: sessionCookie },
@@ -183,6 +247,7 @@ describe('admin media HTTP contract', () => {
       projectCount: 2,
       profileResumeCount: 0,
       profileAvatarCount: 0,
+      previewForCount: 0,
     })
   })
 
@@ -327,6 +392,71 @@ describe('Cloudinary media provider', () => {
     )
   })
 
+  it('creates and verifies constrained video uploads', async () => {
+    const { client } = createFakeCloudinaryClient({
+      public_id: 'portfolio/videos/generated-id',
+      resource_type: 'video',
+      secure_url: 'https://res.cloudinary.com/example/video/upload/generated.mp4',
+      format: 'mp4',
+      width: 720,
+      height: 1280,
+      duration: 29.87,
+      bytes: 1_200_000,
+    })
+    const provider = createCloudinaryMediaProvider(configuration, {
+      client,
+      createId: () => 'generated-id',
+    })
+
+    const descriptor = provider.createUploadDescriptor('video')
+    const metadata = await provider.getAssetMetadata(providerAssetId, { kind: 'video' })
+
+    assert.equal(descriptor.upload.url.endsWith('/video/upload'), true)
+    assert.equal(descriptor.constraints.maxDurationSeconds, 30)
+    assert.equal(metadata.kind, 'video')
+    assert.equal(metadata.duration, 29.87)
+    assert.equal(
+      provider.createDeliveryUrl({
+        secureUrl: metadata.secureUrl,
+        resourceType: 'video',
+        preset: 'serviceShowcaseVideo',
+      }),
+      'https://res.cloudinary.com/example/video/upload/c_limit,w_1280,h_1280,f_auto:video,q_auto/generated.mp4',
+    )
+  })
+
+  it('creates and verifies raw Rive uploads with the file extension in the public ID', async () => {
+    const { client } = createFakeCloudinaryClient({
+      public_id: 'portfolio/animations/generated-id.riv',
+      resource_type: 'raw',
+      secure_url: 'https://res.cloudinary.com/example/raw/upload/generated-id.riv',
+      format: undefined,
+      width: undefined,
+      height: undefined,
+      bytes: 450_000,
+    })
+    const provider = createCloudinaryMediaProvider(configuration, {
+      client,
+      createId: () => 'generated-id',
+    })
+
+    const descriptor = provider.createUploadDescriptor('animation')
+    const metadata = await provider.getAssetMetadata(providerAssetId, { kind: 'animation' })
+
+    assert.equal(descriptor.upload.url.endsWith('/raw/upload'), true)
+    assert.equal(descriptor.upload.fields.public_id, 'portfolio/animations/generated-id.riv')
+    assert.equal(metadata.format, 'riv')
+    assert.equal('width' in metadata, false)
+    assert.equal(
+      provider.createDeliveryUrl({
+        secureUrl: metadata.secureUrl,
+        resourceType: 'raw',
+        preset: 'animation',
+      }),
+      metadata.secureUrl,
+    )
+  })
+
   it('loads authoritative metadata by immutable asset ID', async () => {
     const { client, state } = createFakeCloudinaryClient()
     const provider = createCloudinaryMediaProvider(configuration, { client })
@@ -449,6 +579,8 @@ function createMediaServiceHarness({
   projectCount = 0,
   profileResumeCount = 0,
   profileAvatarCount = 0,
+  previewForCount = 0,
+  previewAsset = null,
   assets = [],
   totalItems = 0,
 } = {}) {
@@ -478,10 +610,11 @@ function createMediaServiceHarness({
     find() {
       return createQueryResult(assets)
     },
-    async countDocuments() {
-      return totalItems
+    async countDocuments(filter) {
+      return Object.hasOwn(filter, 'previewAsset') ? previewForCount : totalItems
     },
-    async findById() {
+    async findById(id) {
+      if (previewAsset && String(id) === String(previewAsset._id)) return previewAsset
       return asset
     },
     async deleteOne(filter) {
@@ -509,22 +642,27 @@ function createMediaServiceHarness({
     createDocumentUploadDescriptor() {
       return { provider: 'cloudinary', constraints: { formats: ['pdf'] } }
     },
-    async getAssetMetadata(id) {
-      state.providerLookups.push(id)
+    async getAssetMetadata(id, { kind = 'image' } = {}) {
+      state.providerLookups.push({ id, kind })
       return {
         provider: 'cloudinary',
-        kind: 'image',
+        kind,
         providerAssetId: id,
-        secureUrl: 'https://example.com/image.webp',
-        resourceType: 'image',
-        format: 'webp',
-        width: 100,
-        height: 100,
+        secureUrl:
+          kind === 'video'
+            ? 'https://example.com/video.mp4'
+            : kind === 'animation'
+              ? 'https://example.com/animation.riv'
+              : 'https://example.com/image.webp',
+        resourceType: kind === 'video' ? 'video' : kind === 'animation' ? 'raw' : 'image',
+        format: kind === 'video' ? 'mp4' : kind === 'animation' ? 'riv' : 'webp',
+        ...(kind !== 'animation' ? { width: 100, height: 100 } : {}),
+        ...(kind === 'video' ? { duration: 10 } : {}),
         bytes: 1_000,
       }
     },
     async getDocumentAssetMetadata(id) {
-      state.providerLookups.push(id)
+      state.providerLookups.push({ id, kind: 'document' })
       return {
         provider: 'cloudinary',
         kind: 'document',
@@ -568,7 +706,7 @@ describe('media service', () => {
     })
 
     assert.equal(first.created, true)
-    assert.deepEqual(fresh.state.providerLookups, [providerAssetId])
+    assert.deepEqual(fresh.state.providerLookups, [{ id: providerAssetId, kind: 'image' }])
     assert.equal(fresh.state.created[0].alt, 'Accessible description')
 
     const existing = mediaData()
@@ -598,6 +736,43 @@ describe('media service', () => {
     assert.equal(harness.state.created[0].format, 'pdf')
   })
 
+  it('registers motion media only with an active image preview', async () => {
+    const previewAsset = mediaData({
+      _id: new mongoose.Types.ObjectId('68e6b0000000000000000002'),
+    })
+    const harness = createMediaServiceHarness({ previewAsset })
+
+    const result = await harness.service.registerAsset({
+      provider: 'cloudinary',
+      providerAssetId,
+      kind: 'video',
+      previewAsset: previewAsset._id.toString(),
+      alt: 'Product design promo',
+    })
+
+    assert.equal(result.created, true)
+    assert.equal(harness.state.created[0].kind, 'video')
+    assert.equal(String(harness.state.created[0].previewAsset), String(previewAsset._id))
+
+    const invalidPreview = createMediaServiceHarness({
+      previewAsset: mediaData({
+        _id: previewAsset._id,
+        kind: 'document',
+        format: 'pdf',
+      }),
+    })
+    await assert.rejects(
+      invalidPreview.service.registerAsset({
+        provider: 'cloudinary',
+        providerAssetId,
+        kind: 'video',
+        previewAsset: previewAsset._id.toString(),
+        alt: 'Product design promo',
+      }),
+      (error) => error.status === 400,
+    )
+  })
+
   it('returns deterministic page metadata and zero total pages for an empty library', async () => {
     const asset = mediaData()
     const populated = createMediaServiceHarness({ assets: [asset], totalItems: 25 })
@@ -619,6 +794,7 @@ describe('media service', () => {
       projectCount: 2,
       profileResumeCount: 0,
       profileAvatarCount: 0,
+      previewForCount: 0,
     })
 
     await assert.rejects(service.deleteAsset(mediaAssetId), (error) => error.status === 409)
@@ -636,6 +812,7 @@ describe('media service', () => {
       projectCount: 0,
       profileResumeCount: 1,
       profileAvatarCount: 0,
+      previewForCount: 0,
     })
     await assert.rejects(service.deleteAsset(mediaAssetId), (error) => error.status === 409)
     assert.deepEqual(state.providerDeletions, [])
@@ -651,7 +828,19 @@ describe('media service', () => {
       projectCount: 0,
       profileResumeCount: 0,
       profileAvatarCount: 1,
+      previewForCount: 0,
     })
+    await assert.rejects(service.deleteAsset(mediaAssetId), (error) => error.status === 409)
+    assert.deepEqual(state.providerDeletions, [])
+  })
+
+  it('blocks deletion while an image is used as a motion preview', async () => {
+    const asset = mediaData()
+    const { service, state } = createMediaServiceHarness({ asset, previewForCount: 2 })
+
+    const result = await service.getAsset(mediaAssetId)
+    assert.equal(result.usage.inUse, true)
+    assert.equal(result.usage.previewForCount, 2)
     await assert.rejects(service.deleteAsset(mediaAssetId), (error) => error.status === 409)
     assert.deepEqual(state.providerDeletions, [])
   })

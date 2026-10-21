@@ -261,16 +261,18 @@ Current Site Profile and resume decisions:
 
 Current media decisions:
 
-- Protected media management is available under `/api/v1/admin/media`; it includes signed-upload descriptors, idempotent registration, paginated listing, usage-aware detail, alt updates, and explicit deletion.
+- Protected media management is available under `/api/v1/admin/media`; it includes kind-aware signed-upload descriptors, idempotent registration, paginated listing, usage-aware detail, metadata updates, and explicit deletion.
 - Cloudinary integration is isolated behind `src/modules/media/providers/cloudinary-media-provider.js`. Domain services and controllers consume the provider interface rather than importing the Cloudinary SDK.
-- Signed browser uploads use unique managed public IDs, `overwrite=false`, SHA-256 signatures, an application tag, and an image-format allowlist. The API secret never appears in responses.
+- Signed browser uploads use unique managed public IDs, `overwrite=false`, SHA-256 signatures, an application tag, and kind-specific format allowlists. Images, MP4 videos, and raw Rive animations use separate managed prefixes and Cloudinary resource types. The API secret never appears in responses.
 - `MediaAsset.providerAssetId` stores Cloudinary's immutable `asset_id`. Registration fetches authoritative metadata through the provider instead of trusting URL, dimensions, format, or byte counts from the browser.
-- `MediaAsset.kind` distinguishes `image` and `document`. Existing records without the persisted field remain legacy-compatible images; project media validation accepts only image-kind assets. The only current document flow is the managed profile PDF resume.
+- `MediaAsset.kind` distinguishes `image`, `video`, `animation`, and `document`. Existing records without the persisted field remain legacy-compatible images; project media and profile avatars accept only image-kind assets, while the managed profile resume is the only document flow.
+- Images accept JPG, JPEG, PNG, WebP, or AVIF up to 10 MB and 10,000 pixels per dimension. Videos accept MP4 up to 25 MB, 30 seconds, and 1,920 pixels per dimension. Animations accept raw Rive files up to 5 MB. Documents accept PDF up to 5 MB.
+- Video and animation assets require a separate active image `previewAsset`. The relationship is reusable and provider-neutral; array placement in a future owning feature determines presentation rather than media-level primary or featured roles.
 - Media lists use page-based pagination with default limit 24, maximum limit 100, and descending `createdAt`/`_id` ordering.
 - Admin media serializers expose the delivery URL and useful metadata but omit provider asset IDs and persistence internals.
-- Media deletion is blocked while any project, the Site Profile resume, or the Site Profile avatar references the asset. Unused assets become `pendingDeletion` before provider deletion; metadata is removed only after provider deletion succeeds or reports the asset already absent.
+- Media deletion is blocked while any project, the Site Profile resume, the Site Profile avatar, or another media asset's preview references the asset. Deleting motion media does not cascade to its preview. Unused assets become `pendingDeletion` before provider deletion; metadata is removed only after provider deletion succeeds or reports the asset already absent.
 - Cloudinary environment values are optional as a complete group so the application can start before provider setup. Media provider operations return `503` until all three values are configured.
-- Public media serialization uses provider-neutral `avatar`, `logo`, `homePreview`, and `screenshot` delivery presets. Cloudinary-specific URL transformations remain inside its provider adapter; frontend code must not construct provider URLs.
+- Public media serialization uses provider-neutral image and video delivery presets; raw Rive delivery is unchanged. Cloudinary-specific URL transformations remain inside its provider adapter; frontend code must not construct provider URLs.
 
 ## Security
 
