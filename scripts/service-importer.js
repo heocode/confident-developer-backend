@@ -1,52 +1,323 @@
+import { execFile } from 'node:child_process'
+import { createHash } from 'node:crypto'
+import { readFile, stat } from 'node:fs/promises'
+import { basename, extname, isAbsolute, relative, resolve } from 'node:path'
+import { promisify } from 'node:util'
+
 import {
-  createAdminServiceBodySchema,
-  updateAdminServiceBodySchema,
-} from '../src/modules/services/admin/admin-service-schemas.js'
+  MAX_ANIMATION_BYTES,
+  MAX_IMAGE_BYTES,
+  MAX_IMAGE_DIMENSION,
+  MAX_VIDEO_BYTES,
+  MAX_VIDEO_DIMENSION,
+  MAX_VIDEO_DURATION_SECONDS,
+} from '../src/modules/media/media-asset.js'
+import { createAdminServiceBodySchema } from '../src/modules/services/admin/admin-service-schemas.js'
+
+const execFileAsync = promisify(execFile)
+const SERVICE_ASSET_ROOT = 'makets/service-assets'
+const PNG_SIGNATURE = '89504e470d0a1a0a'
+const ASSET_KEY_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
+const PROJECT_SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 
 function assert(condition, message) {
   if (!condition) throw new Error(message)
 }
 
-export function buildServiceImportPlan(manifest) {
-  assert(manifest?.version === 1, 'Unsupported service import manifest version')
+function readPngDimensions(buffer, path) {
+  assert(buffer.length >= 24, `Asset is not a valid PNG: ${path}`)
+  assert(buffer.subarray(0, 8).toString('hex') === PNG_SIGNATURE, `Asset must be a PNG: ${path}`)
+  assert(buffer.subarray(12, 16).toString('ascii') === 'IHDR', `Asset is missing a PNG header: ${path}`)
+  return { width: buffer.readUInt32BE(16), height: buffer.readUInt32BE(20), format: 'png' }
+}
+
+function readUInt24LE(buffer, offset) {
+  return buffer[offset] | (buffer[offset + 1] << 8) | (buffer[offset + 2] << 16)
+}
+
+function readWebpDimensions(buffer, path) {
+  assert(buffer.length >= 30, `Asset is not a valid WebP image: ${path}`)
+  assert(buffer.subarray(0, 4).toString('ascii') === 'RIFF', `Asset must be a WebP image: ${path}`)
+  assert(buffer.subarray(8, 12).toString('ascii') === 'WEBP', `Asset must be a WebP image: ${path}`)
+
+  const chunk = buffer.subarray(12, 16).toString('ascii')
+  if (chunk === 'VP8X') {
+    return {
+      width: readUInt24LE(buffer, 24) + 1,
+      height: readUInt24LE(buffer, 27) + 1,
+      format: 'webp',
+    }
+  }
+  if (chunk === 'VP8 ') {
+    assert(
+      buffer.length >= 30 && buffer.subarray(23, 26).toString('hex') === '9d012a',
+      `Asset has an invalid WebP frame: ${path}`,
+    )
+    return {
+      width: buffer.readUInt16LE(26) & 0x3fff,
+      height: buffer.readUInt16LE(28) & 0x3fff,
+      format: 'webp',
+    }
+  }
+  if (chunk === 'VP8L') {
+    assert(buffer.length >= 25 && buffer[20] === 0x2f, `Asset has an invalid WebP frame: ${path}`)
+    return {
+      width: 1 + buffer[21] + ((buffer[22] & 0x3f) << 8),
+      height: 1 + ((buffer[22] & 0xc0) >> 6) + (buffer[23] << 2) + ((buffer[24] & 0x0f) << 10),
+      format: 'webp',
+    }
+  }
+
+  throw new Error(`Asset uses an unsupported WebP encoding: ${path}`)
+}
+
+function readImageDimensions(buffer, path) {
+  const extension = extname(path).toLowerCase()
+  if (extension === '.png') return readPngDimensions(buffer, path)
+  if (extension === '.webp') return readWebpDimensions(buffer, path)
+  throw new Error(`Local service images must use PNG or WebP: ${path}`)
+}
+
+function validateImageDimensions({ width, height }, path) {
+  assert(width > 0 && width <= MAX_IMAGE_DIMENSION, `Asset width is invalid: ${path}`)
+  assert(height > 0 && height <= MAX_IMAGE_DIMENSION, `Asset height is invalid: ${path}`)
+}
+
+function validateRive(buffer, path) {
+  assert(buffer.length >= 8, `Asset is not a valid Rive file: ${path}`)
+  assert(buffer.subarray(0, 4).toString('ascii') === 'RIVE', `Asset must be a Rive file: ${path}`)
+  assert(extname(path).toLowerCase() === '.riv', `Rive assets must use the .riv extension: ${path}`)
+}
+
+function validateMp4(buffer, path) {
+  assert(buffer.length >= 12, `Asset is not a valid MP4 file: ${path}`)
+  assert(buffer.subarray(4, 8).toString('ascii') === 'ftyp', `Asset must be an MP4 file: ${path}`)
+  assert(extname(path).toLowerCase() === '.mp4', `Video assets must use the .mp4 extension: ${path}`)
+}
+
+async function inspectVideoWithFfprobe(absolutePath) {
+  let stdout
+  try {
+    const result = await execFileAsync('ffprobe', [
+      '-v',
+      'error',
+      '-select_streams',
+      'v:0',
+      '-show_entries',
+      'stream=codec_name,width,height,duration:format=duration',
+      '-of',
+      'json',
+      absolutePath,
+    ])
+    stdout = result.stdout
+  } catch {
+    throw new Error('ffprobe is required to validate service video assets')
+  }
+
+  const result = JSON.parse(stdout)
+  const stream = result.streams?.[0]
+  assert(stream, `Video has no readable video stream: ${absolutePath}`)
+  return {
+    codec: stream.codec_name,
+    width: Number(stream.width),
+    height: Number(stream.height),
+    duration: Number(stream.duration ?? result.format?.duration),
+  }
+}
+
+function resolveAssetPath(workspaceRoot, assetPath) {
+  assert(typeof assetPath === 'string' && assetPath.length > 0, 'Asset path is required')
+  assert(!isAbsolute(assetPath), `Asset path must be relative: ${assetPath}`)
+
+  const assetRoot = resolve(workspaceRoot, SERVICE_ASSET_ROOT)
+  const absolutePath = resolve(workspaceRoot, assetPath)
+  const relativePath = relative(assetRoot, absolutePath)
+  assert(
+    relativePath !== '' && relativePath !== '..' && !relativePath.startsWith('../') && !isAbsolute(relativePath),
+    `Asset path must stay inside ${SERVICE_ASSET_ROOT}: ${assetPath}`,
+  )
+  return absolutePath
+}
+
+function validateAlt(alt, key) {
+  assert(typeof alt === 'string' && alt.trim().length > 0, `Asset alt text is required for ${key}`)
+  assert(alt.length <= 300, `Asset alt text is too long for ${key}`)
+  return alt.trim()
+}
+
+async function inspectAsset(
+  descriptor,
+  { key, role, workspaceRoot, absolutePaths, inspectVideo },
+) {
+  const absolutePath = resolveAssetPath(workspaceRoot, descriptor.path)
+  assert(!absolutePaths.has(absolutePath), `Multiple assets reference the same file: ${descriptor.path}`)
+  absolutePaths.add(absolutePath)
+
+  let metadata
+  try {
+    metadata = await stat(absolutePath)
+  } catch (error) {
+    if (error.code === 'ENOENT') throw new Error(`Asset file is missing: ${descriptor.path}`)
+    throw error
+  }
+  assert(metadata.isFile(), `Asset is not a file: ${descriptor.path}`)
+  assert(metadata.size > 0, `Asset is empty: ${descriptor.path}`)
+
+  const contents = await readFile(absolutePath)
+  const common = {
+    key,
+    role,
+    kind: descriptor.kind,
+    path: descriptor.path,
+    absolutePath,
+    filename: basename(descriptor.path),
+    alt: validateAlt(descriptor.alt, key),
+    bytes: metadata.size,
+    sha256: createHash('sha256').update(contents).digest('hex'),
+  }
+
+  if (descriptor.kind === 'image') {
+    assert(metadata.size <= MAX_IMAGE_BYTES, `Image exceeds the byte limit: ${descriptor.path}`)
+    const dimensions = readImageDimensions(contents, descriptor.path)
+    validateImageDimensions(dimensions, descriptor.path)
+    return { ...common, ...dimensions }
+  }
+
+  if (descriptor.kind === 'animation') {
+    assert(metadata.size <= MAX_ANIMATION_BYTES, `Animation exceeds the byte limit: ${descriptor.path}`)
+    validateRive(contents, descriptor.path)
+    return { ...common, format: 'riv' }
+  }
+
+  assert(descriptor.kind === 'video', `Unsupported service media kind: ${descriptor.kind}`)
+  assert(metadata.size <= MAX_VIDEO_BYTES, `Video exceeds the byte limit: ${descriptor.path}`)
+  validateMp4(contents, descriptor.path)
+  const video = await inspectVideo(absolutePath)
+  assert(Number.isInteger(video.width) && video.width > 0, `Video width is invalid: ${descriptor.path}`)
+  assert(Number.isInteger(video.height) && video.height > 0, `Video height is invalid: ${descriptor.path}`)
+  assert(
+    video.width <= MAX_VIDEO_DIMENSION && video.height <= MAX_VIDEO_DIMENSION,
+    `Video dimensions exceed the limit: ${descriptor.path}`,
+  )
+  assert(
+    Number.isFinite(video.duration) &&
+      video.duration > 0 &&
+      video.duration <= MAX_VIDEO_DURATION_SECONDS,
+    `Video duration is invalid: ${descriptor.path}`,
+  )
+  return { ...common, format: 'mp4', ...video }
+}
+
+function validateRelatedProjects(service, slug) {
+  assert(
+    Array.isArray(service.relatedProjectSlugs) && service.relatedProjectSlugs.length > 0,
+    `Related projects are required for ${slug}`,
+  )
+  assert(service.relatedProjectSlugs.length <= 3, `Too many related projects for ${slug}`)
+  const unique = new Set(service.relatedProjectSlugs)
+  assert(unique.size === service.relatedProjectSlugs.length, `Duplicate related project slug in ${slug}`)
+  for (const projectSlug of service.relatedProjectSlugs) {
+    assert(PROJECT_SLUG_PATTERN.test(projectSlug), `Invalid related project slug ${projectSlug} in ${slug}`)
+  }
+}
+
+export async function buildServiceImportPlan(
+  manifest,
+  { workspaceRoot, inspectVideo = inspectVideoWithFfprobe },
+) {
+  assert(manifest?.version === 2, 'Unsupported service import manifest version')
   assert(Array.isArray(manifest.services) && manifest.services.length > 0, 'Import manifest services are required')
 
-  const slugs = new Set()
+  const serviceSlugs = new Set()
   const homeOrders = new Set()
   const servicesPageOrders = new Set()
-  const services = manifest.services.map((service) => {
-    const content = createAdminServiceBodySchema.parse(service)
+  const absolutePaths = new Set()
+  const assets = []
+  const services = []
+
+  for (const service of manifest.services) {
+    const content = createAdminServiceBodySchema.parse(service.content)
     assert(content.status === 'draft', `Imported service must begin as a draft: ${content.slug}`)
-    assert(!slugs.has(content.slug), `Duplicate service slug: ${content.slug}`)
+    assert(content.capabilities?.length > 0, `Capabilities are required for ${content.slug}`)
+    assert(content.tools?.length > 0, `Tools are required for ${content.slug}`)
+    assert(!serviceSlugs.has(content.slug), `Duplicate service slug: ${content.slug}`)
     assert(!homeOrders.has(content.home.order), `Duplicate Home order: ${content.home.order}`)
     assert(
       !servicesPageOrders.has(content.servicesPageOrder),
       `Duplicate Services page order: ${content.servicesPageOrder}`,
     )
-
-    slugs.add(content.slug)
+    serviceSlugs.add(content.slug)
     homeOrders.add(content.home.order)
     servicesPageOrders.add(content.servicesPageOrder)
-    return content
-  })
 
-  assert(services.filter(({ home }) => home.featured).length <= 4, 'Home cannot contain more than 4 services')
-  return { version: manifest.version, services }
-}
+    validateRelatedProjects(service, content.slug)
+    assert(
+      Array.isArray(service.showcase) && service.showcase.length > 0,
+      `Showcase is required for ${content.slug}`,
+    )
 
-export function buildServicePayload(service, existingService = null) {
-  const payload = { ...structuredClone(service), status: 'draft' }
-  return existingService
-    ? updateAdminServiceBodySchema.parse(payload)
-    : createAdminServiceBodySchema.parse(payload)
+    const showcaseKeys = new Set()
+    const showcase = []
+    for (const descriptor of service.showcase) {
+      assert(ASSET_KEY_PATTERN.test(descriptor.key), `Invalid showcase key in ${content.slug}`)
+      assert(!showcaseKeys.has(descriptor.key), `Duplicate showcase key ${descriptor.key} in ${content.slug}`)
+      showcaseKeys.add(descriptor.key)
+
+      const assetKey = `${content.slug}.${descriptor.key}`
+      const requiresPreview = descriptor.kind === 'video' || descriptor.kind === 'animation'
+      assert(
+        requiresPreview ? Boolean(descriptor.preview) : !descriptor.preview,
+        `${requiresPreview ? 'Preview is required' : 'Preview is not supported'} for ${assetKey}`,
+      )
+
+      const asset = await inspectAsset(descriptor, {
+        key: assetKey,
+        role: 'showcase',
+        workspaceRoot,
+        absolutePaths,
+        inspectVideo,
+      })
+      assets.push(asset)
+
+      let previewAssetKey = null
+      if (descriptor.preview) {
+        previewAssetKey = `${assetKey}.preview`
+        const preview = await inspectAsset(
+          { ...descriptor.preview, kind: 'image' },
+          {
+            key: previewAssetKey,
+            role: 'preview',
+            workspaceRoot,
+            absolutePaths,
+            inspectVideo,
+          },
+        )
+        assets.push(preview)
+      }
+
+      showcase.push({ key: descriptor.key, kind: descriptor.kind, assetKey, previewAssetKey })
+    }
+
+    services.push({
+      content,
+      relatedProjectSlugs: [...service.relatedProjectSlugs],
+      showcase,
+    })
+  }
+
+  assert(
+    services.filter(({ content }) => content.home.featured).length <= 4,
+    'Home cannot contain more than 4 services',
+  )
+  return { version: manifest.version, assets, services }
 }
 
 export function isServiceImportPlanPublishable(plan) {
   return plan.services.every(
     (service) =>
-      service.capabilities?.length > 0 &&
-      service.tools?.length > 0 &&
-      service.relatedProjects?.length > 0 &&
-      service.showcaseAssets?.length > 0,
+      service.content.capabilities.length > 0 &&
+      service.content.tools.length > 0 &&
+      service.relatedProjectSlugs.length > 0 &&
+      service.showcase.length > 0,
   )
 }

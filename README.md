@@ -212,7 +212,7 @@ Interrupted runs resume from `output/project-import-state.json`, which is ignore
 
 ## Initial service content import
 
-The service manifest in `scripts/service-import-manifest.js` contains the approved Product & UI/UX Design, Mobile Development, Web Development, and Backend & Architecture Home content. Its dry-run validates the legacy Home content, presentation keys, and unique ordering without network access. Interactive apply now fails before login or external changes until the dedicated Services-page importer supplies capabilities, tools, related projects, and showcase media; this prevents existing published Home content from being moved to incomplete drafts. Credentials are never accepted through command arguments or stored on disk.
+The versioned service manifest in `scripts/service-import-manifest.js` contains the approved Product & UI/UX Design, Mobile Development, Web Development, and Backend & Architecture content: capabilities, tools, ordered related-project slugs, and each service's independently sized ordered showcase. Its ignored source files live under `makets/service-assets`. The offline dry-run validates all 11 showcase files plus four motion previews, including paths, content signatures, dimensions, byte limits, and MP4 metadata; local `ffprobe` is required for the video check. It makes no network requests or external changes. Interactive apply fails before login until the resumable media-upload stage is implemented, so complete local descriptors can never be sent in place of MediaAsset IDs. Credentials are never accepted through command arguments or stored on disk.
 
 ## Coursework API
 

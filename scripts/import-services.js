@@ -1,69 +1,35 @@
-import 'dotenv/config'
+import { dirname, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 import { serviceImportManifest } from './service-import-manifest.js'
-import {
-  buildServiceImportPlan,
-  buildServicePayload,
-  isServiceImportPlanPublishable,
-} from './service-importer.js'
-import {
-  ImportApiError,
-  createImportApiClient,
-  parseImportArguments,
-} from './utils/import-api-client.js'
-import {
-  confirm,
-  readAdminCredentials,
-  requireInteractiveTerminal,
-} from './utils/import-prompts.js'
+import { buildServiceImportPlan, isServiceImportPlanPublishable } from './service-importer.js'
+import { parseImportArguments } from './utils/import-api-client.js'
+
+const workspaceRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 
 function printLocalPlan(plan, options) {
+  const showcaseCount = plan.services.reduce((total, service) => total + service.showcase.length, 0)
+  const previewCount = plan.assets.filter(({ role }) => role === 'preview').length
+
   console.log('Service import plan')
   console.log(`Mode: ${options.dryRun ? 'dry-run' : 'interactive apply'}`)
   console.log(`API: ${options.baseUrl}`)
   console.log(`Trusted origin: ${options.origin}`)
   console.log(`Services: ${plan.services.length}`)
+  console.log(`Showcase assets: ${showcaseCount}`)
+  console.log(`Preview assets: ${previewCount}`)
 
   for (const service of plan.services) {
     console.log(
-      `  ${service.slug}: Home order ${service.home.order}, Services order ${service.servicesPageOrder}`,
+      `  ${service.content.slug}: ${service.showcase.length} showcase, ` +
+        `${service.relatedProjectSlugs.length} related projects`,
     )
   }
 }
 
-function describeRemoteActions(plan, existingServices) {
-  const servicesBySlug = new Map(existingServices.map((service) => [service.slug, service]))
-  console.log('Remote service actions:')
-
-  for (const service of plan.services) {
-    const existing = servicesBySlug.get(service.slug)
-    const transition = existing?.status === 'published' ? ' and temporarily return it to draft' : ''
-    console.log(`  ${existing ? 'Update' : 'Create'} ${service.slug}${transition}`)
-  }
-
-  console.log('  Publication requires a separate confirmation after every draft is ready')
-  return servicesBySlug
-}
-
-async function prepareDrafts({ api, plan, servicesBySlug }) {
-  const drafts = []
-
-  for (const service of plan.services) {
-    const existing = servicesBySlug.get(service.slug) ?? null
-    const payload = buildServicePayload(service, existing)
-    const draft = existing
-      ? await api.updateService(existing.id, payload)
-      : await api.createService(payload)
-    drafts.push(draft)
-    console.log(`Prepared draft: ${service.slug}`)
-  }
-
-  return drafts
-}
-
 async function run() {
   const options = parseImportArguments(process.argv.slice(2))
-  const plan = buildServiceImportPlan(serviceImportManifest)
+  const plan = await buildServiceImportPlan(serviceImportManifest, { workspaceRoot })
   printLocalPlan(plan, options)
 
   if (options.dryRun) {
@@ -72,52 +38,15 @@ async function run() {
   }
 
   if (!isServiceImportPlanPublishable(plan)) {
-    throw new Error(
-      'Interactive apply is disabled until the Services-page manifest includes complete detail content and media.',
-    )
+    throw new Error('Service import plan is not ready for publication')
   }
 
-  requireInteractiveTerminal('Service import')
-  if (!(await confirm('Connect to the Admin API? Login will rotate any existing administrator session.'))) {
-    console.log('Import cancelled before login. No external changes were made.')
-    return
-  }
-
-  const credentials = await readAdminCredentials()
-  const api = createImportApiClient(options)
-
-  try {
-    const admin = await api.login(credentials)
-    credentials.password = undefined
-    console.log(`Authenticated as ${admin.displayName}.`)
-
-    const existingServices = await api.listServices()
-    const servicesBySlug = describeRemoteActions(plan, existingServices)
-    if (!(await confirm('Apply the draft service changes?'))) {
-      console.log('Import cancelled before content changes.')
-      return
-    }
-
-    const drafts = await prepareDrafts({ api, plan, servicesBySlug })
-    if (!(await confirm('Publish all four prepared services now?'))) {
-      console.log('Services remain as drafts. Rerun the importer to resume publication.')
-      return
-    }
-
-    for (const service of drafts) {
-      await api.updateService(service.id, { status: 'published' })
-      console.log(`Published service: ${service.slug}`)
-    }
-
-    console.log('Service import completed successfully.')
-  } finally {
-    credentials.password = undefined
-    await api.logout().catch(() => console.error('Warning: unable to close the importer session.'))
-  }
+  throw new Error(
+    'Interactive apply remains disabled until iteration 4.3 adds resumable media uploads.',
+  )
 }
 
 run().catch((error) => {
-  const prefix = error instanceof ImportApiError ? `API request failed (${error.status})` : 'Service import failed'
-  console.error(`${prefix}: ${error.message}`)
+  console.error(`Service import failed: ${error.message}`)
   process.exitCode = 1
 })

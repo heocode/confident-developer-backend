@@ -1,64 +1,236 @@
 import assert from 'node:assert/strict'
-import { describe, it } from 'node:test'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { afterEach, describe, it } from 'node:test'
 
 import { serviceImportManifest } from '../../scripts/service-import-manifest.js'
 import {
   buildServiceImportPlan,
-  buildServicePayload,
   isServiceImportPlanPublishable,
 } from '../../scripts/service-importer.js'
 import { createImportApiClient } from '../../scripts/utils/import-api-client.js'
 
-describe('service importer', () => {
-  it('validates the approved four-service manifest offline', () => {
-    const plan = buildServiceImportPlan(serviceImportManifest)
+const temporaryDirectories = []
 
-    assert.equal(plan.services.length, 4)
+afterEach(async () => {
+  await Promise.all(temporaryDirectories.splice(0).map((directory) => rm(directory, { recursive: true })))
+})
+
+function pngHeader(width, height) {
+  const buffer = Buffer.alloc(24)
+  Buffer.from('89504e470d0a1a0a', 'hex').copy(buffer)
+  buffer.write('IHDR', 12, 'ascii')
+  buffer.writeUInt32BE(width, 16)
+  buffer.writeUInt32BE(height, 20)
+  return buffer
+}
+
+function webpHeader(width, height) {
+  const buffer = Buffer.alloc(30)
+  buffer.write('RIFF', 0, 'ascii')
+  buffer.writeUInt32LE(buffer.length - 8, 4)
+  buffer.write('WEBP', 8, 'ascii')
+  buffer.write('VP8X', 12, 'ascii')
+  buffer.writeUInt32LE(10, 16)
+  buffer.writeUIntLE(width - 1, 24, 3)
+  buffer.writeUIntLE(height - 1, 27, 3)
+  return buffer
+}
+
+function mp4Header() {
+  const buffer = Buffer.alloc(12)
+  buffer.writeUInt32BE(12, 0)
+  buffer.write('ftyp', 4, 'ascii')
+  buffer.write('isom', 8, 'ascii')
+  return buffer
+}
+
+function minimalManifest() {
+  const assetRoot = 'makets/service-assets/example'
+  return {
+    version: 2,
+    services: [
+      {
+        content: {
+          slug: 'example',
+          title: 'Example',
+          description: 'A complete example service.',
+          icon: 'mobile-development',
+          tone: 'mobile',
+          capabilities: ['Mobile Apps'],
+          tools: [{ key: 'expo', label: 'Expo' }],
+          status: 'draft',
+          home: { featured: true, order: 1 },
+          servicesPageOrder: 1,
+        },
+        relatedProjectSlugs: ['unicon'],
+        showcase: [
+          {
+            key: 'screen',
+            kind: 'image',
+            path: `${assetRoot}/screen.png`,
+            alt: 'Example application screen',
+          },
+          {
+            key: 'demo',
+            kind: 'video',
+            path: `${assetRoot}/demo.mp4`,
+            alt: 'Example interaction demo',
+            preview: {
+              path: `${assetRoot}/demo-preview.webp`,
+              alt: 'Preview of the example interaction demo',
+            },
+          },
+          {
+            key: 'motion',
+            kind: 'animation',
+            path: `${assetRoot}/motion.riv`,
+            alt: 'Example animated illustration',
+            preview: {
+              path: `${assetRoot}/motion-preview.png`,
+              alt: 'Example illustration',
+            },
+          },
+        ],
+      },
+    ],
+  }
+}
+
+async function createFixtureWorkspace() {
+  const directory = await mkdtemp(join(tmpdir(), 'service-importer-'))
+  temporaryDirectories.push(directory)
+  const assetRoot = join(directory, 'makets/service-assets/example')
+  await mkdir(assetRoot, { recursive: true })
+  await Promise.all([
+    writeFile(join(assetRoot, 'screen.png'), pngHeader(490, 1060)),
+    writeFile(join(assetRoot, 'demo.mp4'), mp4Header()),
+    writeFile(join(assetRoot, 'demo-preview.webp'), webpHeader(720, 1280)),
+    writeFile(join(assetRoot, 'motion.riv'), Buffer.from('RIVE\x07\x03\x00\x00', 'binary')),
+    writeFile(join(assetRoot, 'motion-preview.png'), pngHeader(512, 512)),
+  ])
+  return { directory, assetRoot }
+}
+
+const inspectVideo = async () => ({ codec: 'h264', width: 720, height: 1280, duration: 29.87 })
+
+describe('service importer', () => {
+  it('contains the approved content, project mappings, and independent showcases', () => {
+    assert.equal(serviceImportManifest.version, 2)
+    assert.equal(
+      serviceImportManifest.services.reduce((total, service) => total + service.showcase.length, 0),
+      11,
+    )
+    assert.equal(
+      serviceImportManifest.services.reduce(
+        (total, service) => total + service.showcase.filter(({ preview }) => preview).length,
+        0,
+      ),
+      4,
+    )
     assert.deepEqual(
-      plan.services.map(({ slug, icon, tone }) => ({ slug, icon, tone })),
+      serviceImportManifest.services.map(({ content, relatedProjectSlugs, showcase }) => ({
+        slug: content.slug,
+        relatedProjectSlugs,
+        showcase: showcase.map(({ key }) => key),
+      })),
       [
-        { slug: 'product-ui-ux', icon: 'product-ui-ux', tone: 'product' },
-        { slug: 'mobile-development', icon: 'mobile-development', tone: 'mobile' },
-        { slug: 'web-development', icon: 'web-development', tone: 'web' },
-        { slug: 'backend-architecture', icon: 'backend-development', tone: 'backend' },
+        {
+          slug: 'product-ui-ux',
+          relatedProjectSlugs: ['unicon', 'supersauced', 'domsot'],
+          showcase: ['promo-centennial', 'discovery', 'launch', 'students', 'notifications'],
+        },
+        {
+          slug: 'mobile-development',
+          relatedProjectSlugs: ['unicon', 'supersauced'],
+          showcase: ['feed', 'discovery'],
+        },
+        {
+          slug: 'web-development',
+          relatedProjectSlugs: ['domsot', 'unicon'],
+          showcase: ['centennial', 'domsot'],
+        },
+        {
+          slug: 'backend-architecture',
+          relatedProjectSlugs: ['unicon', 'supersauced', 'domsot'],
+          showcase: ['allergies', 'settings'],
+        },
       ],
     )
   })
 
-  it('builds create and update payloads as drafts', () => {
-    const service = buildServiceImportPlan(serviceImportManifest).services[0]
+  it('validates image, video, animation, and preview files offline', async () => {
+    const { directory } = await createFixtureWorkspace()
+    const plan = await buildServiceImportPlan(minimalManifest(), {
+      workspaceRoot: directory,
+      inspectVideo,
+    })
 
-    assert.equal(buildServicePayload(service).status, 'draft')
-    assert.equal(buildServicePayload(service, { id: '68e7c0000000000000000001' }).status, 'draft')
-    assert.equal(isServiceImportPlanPublishable(buildServiceImportPlan(serviceImportManifest)), false)
+    assert.equal(plan.services.length, 1)
+    assert.equal(plan.services[0].showcase.length, 3)
+    assert.equal(plan.assets.length, 5)
+    assert.equal(plan.assets.find(({ key }) => key === 'example.screen').width, 490)
+    assert.equal(plan.assets.find(({ key }) => key === 'example.demo').duration, 29.87)
+    assert.equal(plan.assets.find(({ key }) => key === 'example.demo.preview').format, 'webp')
+    assert.equal(plan.assets.find(({ key }) => key === 'example.motion').format, 'riv')
+    assert.ok(plan.assets.every(({ sha256 }) => /^[a-f\d]{64}$/.test(sha256)))
+    assert.equal(isServiceImportPlanPublishable(plan), true)
   })
 
-  it('treats every non-empty independently sized showcase as publishable', () => {
-    const completeService = {
-      capabilities: ['Mobile Apps'],
-      tools: [{ key: 'expo', label: 'Expo' }],
-      relatedProjects: ['unicon'],
-      showcaseAssets: ['feed.png', 'discovery.png'],
-    }
+  it('rejects invalid ownership mappings and motion preview declarations', async () => {
+    const { directory } = await createFixtureWorkspace()
 
-    assert.equal(isServiceImportPlanPublishable({ services: [completeService] }), true)
-    assert.equal(
-      isServiceImportPlanPublishable({ services: [{ ...completeService, showcaseAssets: [] }] }),
-      false,
+    const duplicateProject = minimalManifest()
+    duplicateProject.services[0].relatedProjectSlugs = ['unicon', 'unicon']
+    await assert.rejects(
+      buildServiceImportPlan(duplicateProject, { workspaceRoot: directory, inspectVideo }),
+      /Duplicate related project slug/,
+    )
+
+    const missingPreview = minimalManifest()
+    delete missingPreview.services[0].showcase[1].preview
+    await assert.rejects(
+      buildServiceImportPlan(missingPreview, { workspaceRoot: directory, inspectVideo }),
+      /Preview is required/,
+    )
+
+    const imagePreview = minimalManifest()
+    imagePreview.services[0].showcase[0].preview = {
+      path: 'makets/service-assets/example/motion-preview.png',
+      alt: 'Unsupported image preview',
+    }
+    await assert.rejects(
+      buildServiceImportPlan(imagePreview, { workspaceRoot: directory, inspectVideo }),
+      /Preview is not supported/,
     )
   })
 
-  it('rejects duplicate slugs and display orders', () => {
-    const duplicateSlug = structuredClone(serviceImportManifest)
-    duplicateSlug.services[1].slug = duplicateSlug.services[0].slug
-    assert.throws(() => buildServiceImportPlan(duplicateSlug), /Duplicate service slug/)
+  it('rejects unsafe, missing, and incorrectly encoded local assets', async () => {
+    const { directory, assetRoot } = await createFixtureWorkspace()
 
-    const duplicateOrder = structuredClone(serviceImportManifest)
-    duplicateOrder.services[1].home.order = duplicateOrder.services[0].home.order
-    assert.throws(() => buildServiceImportPlan(duplicateOrder), /Duplicate Home order/)
+    const unsafe = minimalManifest()
+    unsafe.services[0].showcase[0].path = '../outside.png'
+    await assert.rejects(
+      buildServiceImportPlan(unsafe, { workspaceRoot: directory, inspectVideo }),
+      /must stay inside makets\/service-assets/,
+    )
+
+    const missing = minimalManifest()
+    missing.services[0].showcase[0].path = 'makets/service-assets/example/missing.png'
+    await assert.rejects(
+      buildServiceImportPlan(missing, { workspaceRoot: directory, inspectVideo }),
+      /Asset file is missing/,
+    )
+
+    await writeFile(join(assetRoot, 'screen.png'), Buffer.from('not a png'))
+    await assert.rejects(
+      buildServiceImportPlan(minimalManifest(), { workspaceRoot: directory, inspectVideo }),
+      /not a valid PNG/,
+    )
   })
 
-  it('uses the protected service HTTP contracts through the shared importer client', async () => {
+  it('retains the authenticated service HTTP client for the next import stage', async () => {
     const calls = []
     const jsonResponse = (body, init) =>
       new Response(JSON.stringify(body), {
@@ -67,7 +239,6 @@ describe('service importer', () => {
       })
     const fetchImplementation = async (url, options) => {
       calls.push({ url, options })
-
       if (url.endsWith('/auth/login')) {
         return jsonResponse(
           { success: true, data: { id: 'admin-id', displayName: 'Owner' } },
@@ -76,12 +247,6 @@ describe('service importer', () => {
       }
       if (url.endsWith('/admin/services') && options.method === 'GET') {
         return jsonResponse({ success: true, data: [] })
-      }
-      if (url.endsWith('/admin/services') && options.method === 'POST') {
-        return jsonResponse({ success: true, data: { id: 'service-id', slug: 'example' } }, { status: 201 })
-      }
-      if (url.endsWith('/admin/services/service-id') && options.method === 'PATCH') {
-        return jsonResponse({ success: true, data: { id: 'service-id', slug: 'example' } })
       }
       if (url.endsWith('/auth/logout')) return jsonResponse({ success: true })
       throw new Error(`Unexpected test request: ${url}`)
@@ -94,8 +259,6 @@ describe('service importer', () => {
 
     await api.login({ email: 'owner@example.com', password: 'not-a-real-password' })
     await api.listServices()
-    await api.createService({ slug: 'example', title: 'Example' })
-    await api.updateService('service-id', { status: 'published' })
     await api.logout()
 
     assert.deepEqual(
@@ -103,13 +266,8 @@ describe('service importer', () => {
       [
         ['https://api.example.com/api/v1/auth/login', 'POST'],
         ['https://api.example.com/api/v1/admin/services', 'GET'],
-        ['https://api.example.com/api/v1/admin/services', 'POST'],
-        ['https://api.example.com/api/v1/admin/services/service-id', 'PATCH'],
         ['https://api.example.com/api/v1/auth/logout', 'POST'],
       ],
     )
-    assert.equal(calls[1].options.headers.cookie, 'cd_admin_session=opaque-token')
-    assert.equal(calls[2].options.headers.origin, 'https://portfolio.example.com')
-    assert.equal(calls[3].options.headers.origin, 'https://portfolio.example.com')
   })
 })
