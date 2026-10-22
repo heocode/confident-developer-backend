@@ -5,11 +5,16 @@ import { fileURLToPath } from 'node:url'
 
 import { serviceImportManifest } from './service-import-manifest.js'
 import {
+  applyServiceDrafts,
   buildServiceImportPlan,
+  createServiceImportContext,
   isServiceImportPlanPublishable,
   loadServiceImportState,
+  publishServiceDrafts,
   saveServiceImportState,
   uploadServiceMediaPlan,
+  validateServiceProjectLogos,
+  verifyPublicServiceImport,
 } from './service-importer.js'
 import {
   ImportApiError,
@@ -45,6 +50,20 @@ function printLocalPlan(plan, options) {
   }
 }
 
+function describeRemoteActions(plan, context) {
+  console.log('Remote service actions:')
+  for (const service of plan.services) {
+    const existing = context.servicesBySlug.get(service.content.slug)
+    const transition =
+      existing?.status === 'published' ? '; changed content will temporarily return to draft' : ''
+    console.log(
+      `  ${existing ? 'Update or reuse' : 'Create'} ${service.content.slug}${transition}`,
+    )
+  }
+  console.log('  Upload or resume all missing media assets')
+  console.log('  Publication requires a separate confirmation after every draft is ready')
+}
+
 async function run() {
   const options = parseImportArguments(process.argv.slice(2))
   const plan = await buildServiceImportPlan(serviceImportManifest, { workspaceRoot })
@@ -59,9 +78,12 @@ async function run() {
     throw new Error('Service import plan is not ready for publication')
   }
 
-  requireInteractiveTerminal('Service media import')
+  requireInteractiveTerminal('Service import')
   const state = await loadServiceImportState(statePath, plan.version)
-  if (state.completedAt) console.log(`The previous media import completed at ${state.completedAt}.`)
+  if (state.completedAt) console.log(`The previous service import completed at ${state.completedAt}.`)
+  else if (state.mediaCompletedAt) {
+    console.log(`The previous media stage completed at ${state.mediaCompletedAt}.`)
+  }
 
   if (!(await confirm('Connect to the Admin API? Login will rotate any existing administrator session.'))) {
     console.log('Import cancelled before login. No external changes were made.')
@@ -75,14 +97,27 @@ async function run() {
     const admin = await api.login(credentials)
     credentials.password = undefined
     console.log(`Authenticated as ${admin.displayName}.`)
-    console.log('This stage uploads or resumes media only. Services and projects will not be changed.')
 
-    if (!(await confirm('Upload and register all missing service media now?'))) {
-      console.log('Import cancelled before media changes.')
+    const [existingProjects, existingServices] = await Promise.all([
+      api.listProjects(),
+      api.listServices(),
+    ])
+    const context = createServiceImportContext(plan, existingProjects, existingServices)
+    await validateServiceProjectLogos({ api, context })
+    describeRemoteActions(plan, context)
+
+    if (
+      !(await confirm(
+        `Upload missing media and prepare all ${plan.services.length} services as complete drafts?`,
+      ))
+    ) {
+      console.log('Import cancelled before content changes.')
       return
     }
 
-    await uploadServiceMediaPlan({
+    state.completedAt = null
+    await saveServiceImportState(statePath, state)
+    const mediaAssetIds = await uploadServiceMediaPlan({
       api,
       plan,
       state,
@@ -92,7 +127,40 @@ async function run() {
         console.log(`${action === 'reused' ? 'Reused' : 'Registered'} media: ${asset.key}`)
       },
     })
-    console.log('Service media import completed. No service documents were changed.')
+
+    const preparedServices = await applyServiceDrafts({
+      api,
+      plan,
+      mediaAssetIds,
+      context,
+      state,
+      statePath,
+      onProgress: ({ service, action }) => {
+        const labels = { created: 'Created draft', updated: 'Prepared draft', reused: 'Reused' }
+        console.log(`${labels[action]} service: ${service.slug} (${service.status})`)
+      },
+    })
+
+    const drafts = preparedServices.filter(({ status }) => status !== 'published').length
+    console.log(`Prepared ${preparedServices.length} services; ${drafts} require publication.`)
+    if (!(await confirm(`Publish all ${preparedServices.length} prepared services now?`))) {
+      console.log('Prepared services remain as drafts. Rerun the importer to resume publication.')
+      return
+    }
+
+    await publishServiceDrafts({
+      api,
+      services: preparedServices,
+      state,
+      statePath,
+      onProgress: ({ service, action }) => {
+        console.log(`${action === 'reused' ? 'Already published' : 'Published'} service: ${service.slug}`)
+      },
+    })
+    await verifyPublicServiceImport({ api, plan, mediaAssetIds })
+    state.completedAt = new Date().toISOString()
+    await saveServiceImportState(statePath, state)
+    console.log('Service import completed and the public API was verified successfully.')
   } finally {
     credentials.password = undefined
     await api.logout().catch(() => console.error('Warning: unable to close the importer session.'))

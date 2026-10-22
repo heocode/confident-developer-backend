@@ -395,7 +395,7 @@ describe('Cloudinary media provider', () => {
   })
 
   it('creates and verifies constrained video uploads', async () => {
-    const { client } = createFakeCloudinaryClient({
+    const { client, state } = createFakeCloudinaryClient({
       public_id: 'portfolio/videos/generated-id',
       resource_type: 'video',
       secure_url: 'https://res.cloudinary.com/example/video/upload/generated.mp4',
@@ -417,6 +417,9 @@ describe('Cloudinary media provider', () => {
     assert.equal(descriptor.constraints.maxDurationSeconds, 30)
     assert.equal(metadata.kind, 'video')
     assert.equal(metadata.duration, 29.87)
+    assert.deepEqual(state.resourceIds, [
+      { assetId: providerAssetId, options: { tags: true, media_metadata: true } },
+    ])
     assert.equal(
       provider.createDeliveryUrl({
         secureUrl: metadata.secureUrl,

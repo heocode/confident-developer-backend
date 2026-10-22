@@ -328,8 +328,10 @@ function initialImportState(manifestVersion) {
     version: IMPORT_STATE_VERSION,
     manifestVersion,
     assets: {},
+    services: {},
     supersededMediaAssetIds: [],
     supersededProviderAssetIds: [],
+    mediaCompletedAt: null,
     completedAt: null,
   }
 }
@@ -342,6 +344,13 @@ export async function loadServiceImportState(statePath, manifestVersion) {
     assert(state.assets && typeof state.assets === 'object', 'Service import state assets are missing')
     assert(Array.isArray(state.supersededMediaAssetIds), 'Service import state media history is invalid')
     assert(Array.isArray(state.supersededProviderAssetIds), 'Service import state provider history is invalid')
+    if (!state.services) {
+      state.services = {}
+      state.mediaCompletedAt = state.completedAt ?? null
+      state.completedAt = null
+    }
+    assert(typeof state.services === 'object', 'Service import state service checkpoints are invalid')
+    state.mediaCompletedAt ??= null
     return state
   } catch (error) {
     if (error.code !== 'ENOENT') throw error
@@ -478,7 +487,7 @@ export async function uploadServiceMediaPlan({
     delete state.assets[key]
   }
 
-  state.completedAt = null
+  state.mediaCompletedAt = null
   await saveState(statePath, state)
 
   const previewByAssetKey = previewMappings(plan)
@@ -505,7 +514,280 @@ export async function uploadServiceMediaPlan({
     onProgress({ asset, action: result.action, mediaAssetId: result.mediaAssetId })
   }
 
-  state.completedAt = now().toISOString()
+  state.mediaCompletedAt = now().toISOString()
   await saveState(statePath, state)
   return mediaAssetIds
+}
+
+function sameArray(left, right) {
+  return left.length === right.length && left.every((value, index) => value === right[index])
+}
+
+function sameTools(left, right) {
+  return (
+    left.length === right.length &&
+    left.every(
+      (tool, index) => tool.key === right[index].key && tool.label === right[index].label,
+    )
+  )
+}
+
+function serviceMatchesPayload(service, payload) {
+  return (
+    service.slug === payload.slug &&
+    service.title === payload.title &&
+    service.description === payload.description &&
+    service.icon === payload.icon &&
+    service.tone === payload.tone &&
+    sameArray(service.capabilities, payload.capabilities) &&
+    sameTools(service.tools, payload.tools) &&
+    sameArray(service.relatedProjects, payload.relatedProjects) &&
+    sameArray(service.showcaseAssets, payload.showcaseAssets) &&
+    service.home.featured === payload.home.featured &&
+    service.home.order === payload.home.order &&
+    service.servicesPageOrder === payload.servicesPageOrder
+  )
+}
+
+export function createServiceImportContext(plan, existingProjects, existingServices) {
+  const projectsBySlug = new Map()
+  for (const project of existingProjects) {
+    assert(!projectsBySlug.has(project.slug), `Duplicate remote project slug: ${project.slug}`)
+    projectsBySlug.set(project.slug, project)
+  }
+
+  const servicesBySlug = new Map()
+  for (const service of existingServices) {
+    assert(!servicesBySlug.has(service.slug), `Duplicate remote service slug: ${service.slug}`)
+    servicesBySlug.set(service.slug, service)
+  }
+
+  const requiredProjectSlugs = new Set(
+    plan.services.flatMap(({ relatedProjectSlugs }) => relatedProjectSlugs),
+  )
+  for (const slug of requiredProjectSlugs) {
+    const project = projectsBySlug.get(slug)
+    assert(project, `Required project is missing: ${slug}`)
+    assert(project.status === 'published', `Required project is not published: ${slug}`)
+    assert(project.logoAsset, `Required project has no logo asset: ${slug}`)
+  }
+
+  const plannedSlugs = new Set(plan.services.map(({ content }) => content.slug))
+  const outsideFeaturedCount = existingServices.filter(
+    (service) =>
+      !plannedSlugs.has(service.slug) && service.status === 'published' && service.home.featured,
+  ).length
+  const plannedFeaturedCount = plan.services.filter(({ content }) => content.home.featured).length
+  assert(
+    outsideFeaturedCount + plannedFeaturedCount <= 4,
+    'Published Home services outside the manifest would exceed the four-service limit',
+  )
+
+  return { projectsBySlug, servicesBySlug, requiredProjectSlugs }
+}
+
+export async function validateServiceProjectLogos({ api, context }) {
+  const checkedAssetIds = new Set()
+  for (const slug of context.requiredProjectSlugs) {
+    const project = context.projectsBySlug.get(slug)
+    if (!project.logoAsset || checkedAssetIds.has(project.logoAsset)) continue
+    checkedAssetIds.add(project.logoAsset)
+    const logo = await api.getMediaAsset(project.logoAsset)
+    assert(
+      logo?.status === 'active' && logo.kind === 'image',
+      `Required project logo is missing, inactive, or not an image: ${project.slug}`,
+    )
+  }
+}
+
+export function buildServicePayload(service, mediaAssetIds, context) {
+  const relatedProjects = service.relatedProjectSlugs.map((slug) => {
+    const projectId = context.projectsBySlug.get(slug)?.id
+    assert(projectId, `Project ID is missing for service ${service.content.slug}: ${slug}`)
+    return projectId
+  })
+  const showcaseAssets = service.showcase.map(({ assetKey }) => {
+    const mediaAssetId = mediaAssetIds[assetKey]
+    assert(mediaAssetId, `MediaAsset ID is missing for service ${service.content.slug}: ${assetKey}`)
+    return mediaAssetId
+  })
+
+  return {
+    ...service.content,
+    status: 'draft',
+    home: { ...service.content.home },
+    capabilities: [...service.content.capabilities],
+    tools: service.content.tools.map((tool) => ({ ...tool })),
+    relatedProjects,
+    showcaseAssets,
+  }
+}
+
+export async function applyServiceDrafts({
+  api,
+  plan,
+  mediaAssetIds,
+  context,
+  state,
+  statePath,
+  saveState = saveServiceImportState,
+  onProgress = () => {},
+}) {
+  state.services ??= {}
+  state.completedAt = null
+  await saveState(statePath, state)
+  const preparedServices = []
+
+  for (const service of plan.services) {
+    const slug = service.content.slug
+    const existing = context.servicesBySlug.get(slug) ?? null
+    const payload = buildServicePayload(service, mediaAssetIds, context)
+    let prepared
+    let action
+
+    if (
+      existing &&
+      ['draft', 'published'].includes(existing.status) &&
+      serviceMatchesPayload(existing, payload)
+    ) {
+      prepared = existing
+      action = 'reused'
+    } else if (existing) {
+      prepared = await api.updateService(existing.id, payload)
+      action = 'updated'
+    } else {
+      prepared = await api.createService(payload)
+      action = 'created'
+    }
+
+    state.services[slug] = { serviceId: prepared.id, status: prepared.status }
+    await saveState(statePath, state)
+    preparedServices.push(prepared)
+    onProgress({ service: prepared, action })
+  }
+
+  return preparedServices
+}
+
+export async function publishServiceDrafts({
+  api,
+  services,
+  state,
+  statePath,
+  saveState = saveServiceImportState,
+  onProgress = () => {},
+}) {
+  const publishedServices = []
+
+  for (const service of services) {
+    const published =
+      service.status === 'published'
+        ? service
+        : await api.updateService(service.id, { status: 'published' })
+    state.services[published.slug] = { serviceId: published.id, status: published.status }
+    await saveState(statePath, state)
+    publishedServices.push(published)
+    onProgress({ service: published, action: service.status === 'published' ? 'reused' : 'published' })
+  }
+
+  return publishedServices
+}
+
+function assertOrderedSubset(actual, expected, label) {
+  let previousIndex = -1
+  for (const value of expected) {
+    const index = actual.indexOf(value)
+    assert(index !== -1, `${label} is missing ${value}`)
+    assert(index > previousIndex, `${label} order does not match the manifest`)
+    previousIndex = index
+  }
+}
+
+export async function verifyPublicServiceImport({ api, plan, mediaAssetIds }) {
+  const list = await api.listPublicServices()
+  const home = await api.listPublicServices('home')
+  const assetsByKey = new Map(plan.assets.map((asset) => [asset.key, asset]))
+  const expectedListSlugs = [...plan.services]
+    .sort((left, right) => left.content.servicesPageOrder - right.content.servicesPageOrder)
+    .map(({ content }) => content.slug)
+  const expectedHomeSlugs = plan.services
+    .filter(({ content }) => content.home.featured)
+    .sort((left, right) => left.content.home.order - right.content.home.order)
+    .map(({ content }) => content.slug)
+
+  assertOrderedSubset(
+    list.map(({ slug }) => slug),
+    expectedListSlugs,
+    'Public Services list',
+  )
+  assertOrderedSubset(
+    home.map(({ slug }) => slug),
+    expectedHomeSlugs,
+    'Public Home services list',
+  )
+
+  for (const service of plan.services) {
+    const detail = await api.getPublicService(service.content.slug)
+    for (const field of ['slug', 'title', 'description', 'icon', 'tone']) {
+      assert(
+        detail[field] === service.content[field],
+        `Public ${field} does not match for ${service.content.slug}`,
+      )
+    }
+    assert(
+      sameArray(detail.capabilities, service.content.capabilities),
+      `Public capabilities do not match for ${service.content.slug}`,
+    )
+    assert(
+      sameTools(detail.tools, service.content.tools),
+      `Public tools do not match for ${service.content.slug}`,
+    )
+    assert(
+      sameArray(
+        detail.relatedProjects.map(({ slug }) => slug),
+        service.relatedProjectSlugs,
+      ),
+      `Public related projects do not match for ${service.content.slug}`,
+    )
+    assert(
+      sameArray(
+        detail.showcaseAssets.map(({ id }) => id),
+        service.showcase.map(({ assetKey }) => mediaAssetIds[assetKey]),
+      ),
+      `Public showcase does not match for ${service.content.slug}`,
+    )
+
+    for (const [index, item] of service.showcase.entries()) {
+      const publicAsset = detail.showcaseAssets[index]
+      const plannedAsset = assetsByKey.get(item.assetKey)
+      assert(publicAsset.kind === item.kind, `Public media kind does not match for ${item.assetKey}`)
+      assert(
+        publicAsset.format === plannedAsset.format,
+        `Public media format does not match for ${item.assetKey}`,
+      )
+      assert(publicAsset.alt === plannedAsset.alt, `Public media alt does not match for ${item.assetKey}`)
+      assert(
+        publicAsset.width === (plannedAsset.width ?? null) &&
+          publicAsset.height === (plannedAsset.height ?? null),
+        `Public media dimensions do not match for ${item.assetKey}`,
+      )
+      assert(publicAsset.url, `Public media URL is missing for ${item.assetKey}`)
+      if (item.kind === 'video') {
+        assert(publicAsset.duration > 0, `Public media duration is missing for ${item.assetKey}`)
+      }
+      if (item.previewAssetKey) {
+        const plannedPreview = assetsByKey.get(item.previewAssetKey)
+        assert(publicAsset.preview?.url, `Public media preview is missing for ${item.assetKey}`)
+        assert(
+          publicAsset.preview.id === mediaAssetIds[item.previewAssetKey] &&
+            publicAsset.preview.alt === plannedPreview.alt &&
+            publicAsset.preview.width === plannedPreview.width &&
+            publicAsset.preview.height === plannedPreview.height,
+          `Public media preview does not match for ${item.assetKey}`,
+        )
+      }
+    }
+  }
+
+  return { serviceCount: plan.services.length }
 }

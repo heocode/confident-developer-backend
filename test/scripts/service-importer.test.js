@@ -6,11 +6,17 @@ import { afterEach, describe, it } from 'node:test'
 
 import { serviceImportManifest } from '../../scripts/service-import-manifest.js'
 import {
+  applyServiceDrafts,
+  buildServicePayload,
   buildServiceImportPlan,
+  createServiceImportContext,
   isServiceImportPlanPublishable,
   loadServiceImportState,
+  publishServiceDrafts,
   saveServiceImportState,
   uploadServiceMediaPlan,
+  validateServiceProjectLogos,
+  verifyPublicServiceImport,
 } from '../../scripts/service-importer.js'
 import { createImportApiClient } from '../../scripts/utils/import-api-client.js'
 
@@ -123,8 +129,10 @@ function emptyState() {
     version: 1,
     manifestVersion: 2,
     assets: {},
+    services: {},
     supersededMediaAssetIds: [],
     supersededProviderAssetIds: [],
+    mediaCompletedAt: null,
     completedAt: null,
   }
 }
@@ -297,6 +305,15 @@ describe('service importer', () => {
     assert.equal(metadata.mode & 0o777, 0o600)
     assert.deepEqual(loaded, state)
     await assert.rejects(loadServiceImportState(statePath, 3), /manifest version does not match/)
+
+    const legacyState = { ...state, completedAt: '2026-10-21T12:00:00.000Z' }
+    delete legacyState.services
+    delete legacyState.mediaCompletedAt
+    await saveServiceImportState(statePath, legacyState)
+    const migrated = await loadServiceImportState(statePath, 2)
+    assert.deepEqual(migrated.services, {})
+    assert.equal(migrated.mediaCompletedAt, '2026-10-21T12:00:00.000Z')
+    assert.equal(migrated.completedAt, null)
   })
 
   it('uploads previews before motion media and reuses registered assets on rerun', async () => {
@@ -339,7 +356,7 @@ describe('service importer', () => {
       calls.registrations.find(({ kind }) => kind === 'animation').previewAsset,
       firstIds['example.motion.preview'],
     )
-    assert.equal(state.completedAt, '2026-10-21T12:00:00.000Z')
+    assert.equal(state.mediaCompletedAt, '2026-10-21T12:00:00.000Z')
     assert.ok(progress.every(({ action }) => action === 'registered'))
 
     const uploadCount = calls.uploads.length
@@ -401,6 +418,226 @@ describe('service importer', () => {
     assert.notEqual(state.assets[screen.key].mediaAssetId, previous.mediaAssetId)
   })
 
+  it('resolves published project dependencies and builds ordered service payloads', async () => {
+    const { directory } = await createFixtureWorkspace()
+    const plan = await buildServiceImportPlan(minimalManifest(), {
+      workspaceRoot: directory,
+      inspectVideo,
+    })
+    const project = {
+      id: 'project-unicon',
+      slug: 'unicon',
+      status: 'published',
+      logoAsset: 'logo-unicon',
+    }
+    const context = createServiceImportContext(plan, [project], [])
+    const mediaAssetIds = Object.fromEntries(
+      plan.assets.map(({ key }) => [key, `media-${key}`]),
+    )
+    const payload = buildServicePayload(plan.services[0], mediaAssetIds, context)
+
+    assert.equal(payload.status, 'draft')
+    assert.deepEqual(payload.relatedProjects, ['project-unicon'])
+    assert.deepEqual(
+      payload.showcaseAssets,
+      plan.services[0].showcase.map(({ assetKey }) => `media-${assetKey}`),
+    )
+    await validateServiceProjectLogos({
+      api: { getMediaAsset: async () => ({ status: 'active', kind: 'image' }) },
+      context,
+    })
+    await assert.rejects(
+      validateServiceProjectLogos({
+        api: { getMediaAsset: async () => ({ status: 'inactive', kind: 'image' }) },
+        context,
+      }),
+      /project logo is missing, inactive, or not an image/,
+    )
+
+    assert.throws(
+      () => createServiceImportContext(plan, [], []),
+      /Required project is missing: unicon/,
+    )
+    assert.throws(
+      () =>
+        createServiceImportContext(
+          plan,
+          [project],
+          Array.from({ length: 4 }, (_, index) => ({
+            id: `outside-${index}`,
+            slug: `outside-${index}`,
+            status: 'published',
+            home: { featured: true },
+          })),
+        ),
+      /would exceed the four-service limit/,
+    )
+  })
+
+  it('creates, updates, and reuses complete service drafts idempotently', async () => {
+    const { directory } = await createFixtureWorkspace()
+    const plan = await buildServiceImportPlan(minimalManifest(), {
+      workspaceRoot: directory,
+      inspectVideo,
+    })
+    const project = {
+      id: 'project-unicon',
+      slug: 'unicon',
+      status: 'published',
+      logoAsset: 'logo-unicon',
+    }
+    const mediaAssetIds = Object.fromEntries(
+      plan.assets.map(({ key }) => [key, `media-${key}`]),
+    )
+    const emptyContext = createServiceImportContext(plan, [project], [])
+    const payload = buildServicePayload(plan.services[0], mediaAssetIds, emptyContext)
+    const calls = { creates: [], updates: [] }
+    const api = {
+      async createService(input) {
+        calls.creates.push(input)
+        return { id: 'service-example', ...input }
+      },
+      async updateService(id, input) {
+        calls.updates.push({ id, input })
+        return { id, ...input }
+      },
+    }
+    const state = emptyState()
+    const options = {
+      api,
+      plan,
+      mediaAssetIds,
+      state,
+      statePath: join(directory, 'state.json'),
+      saveState: async () => {},
+    }
+
+    const created = await applyServiceDrafts({ ...options, context: emptyContext })
+    assert.equal(created[0].status, 'draft')
+    assert.equal(calls.creates.length, 1)
+
+    const published = { id: 'service-example', ...payload, status: 'published' }
+    const matchingContext = createServiceImportContext(plan, [project], [published])
+    const reusedActions = []
+    const reused = await applyServiceDrafts({
+      ...options,
+      context: matchingContext,
+      onProgress: ({ action }) => reusedActions.push(action),
+    })
+    assert.equal(reused[0].status, 'published')
+    assert.deepEqual(reusedActions, ['reused'])
+    assert.equal(calls.updates.length, 0)
+
+    const changedContext = createServiceImportContext(
+      plan,
+      [project],
+      [{ ...published, description: 'Outdated description' }],
+    )
+    const updated = await applyServiceDrafts({ ...options, context: changedContext })
+    assert.equal(updated[0].status, 'draft')
+    assert.equal(calls.updates.length, 1)
+    assert.deepEqual(state.services.example, {
+      serviceId: 'service-example',
+      status: 'draft',
+    })
+  })
+
+  it('publishes only remaining drafts and checkpoints every service', async () => {
+    const state = emptyState()
+    const savedStatuses = []
+    const calls = []
+    const services = [
+      { id: 'service-one', slug: 'one', status: 'draft' },
+      { id: 'service-two', slug: 'two', status: 'published' },
+    ]
+
+    const published = await publishServiceDrafts({
+      api: {
+        async updateService(id, input) {
+          calls.push({ id, input })
+          return { id, slug: 'one', status: input.status }
+        },
+      },
+      services,
+      state,
+      statePath: '/ignored/state.json',
+      saveState: async (_path, snapshot) => {
+        savedStatuses.push({ ...snapshot.services })
+      },
+    })
+
+    assert.deepEqual(calls, [{ id: 'service-one', input: { status: 'published' } }])
+    assert.deepEqual(
+      published.map(({ status }) => status),
+      ['published', 'published'],
+    )
+    assert.equal(state.services.one.status, 'published')
+    assert.equal(state.services.two.status, 'published')
+    assert.equal(savedStatuses.length, 2)
+    assert.equal(state.completedAt, null)
+  })
+
+  it('verifies public ordering, relationships, media order, and motion previews', async () => {
+    const { directory } = await createFixtureWorkspace()
+    const plan = await buildServiceImportPlan(minimalManifest(), {
+      workspaceRoot: directory,
+      inspectVideo,
+    })
+    const mediaAssetIds = Object.fromEntries(
+      plan.assets.map(({ key }) => [key, `media-${key}`]),
+    )
+    const service = plan.services[0]
+
+    const result = await verifyPublicServiceImport({
+      api: {
+        async listPublicServices(placement) {
+          return placement === 'home'
+            ? [{ slug: service.content.slug }]
+            : [{ slug: 'outside' }, { slug: service.content.slug }]
+        },
+        async getPublicService() {
+          return {
+            slug: service.content.slug,
+            title: service.content.title,
+            description: service.content.description,
+            icon: service.content.icon,
+            tone: service.content.tone,
+            capabilities: service.content.capabilities,
+            tools: service.content.tools,
+            relatedProjects: service.relatedProjectSlugs.map((slug) => ({ slug })),
+            showcaseAssets: service.showcase.map((item) => {
+              const asset = plan.assets.find(({ key }) => key === item.assetKey)
+              const preview = plan.assets.find(({ key }) => key === item.previewAssetKey)
+              return {
+                id: mediaAssetIds[item.assetKey],
+                kind: item.kind,
+                format: asset.format,
+                alt: asset.alt,
+                width: asset.width ?? null,
+                height: asset.height ?? null,
+                duration: item.kind === 'video' ? asset.duration : null,
+                url: `https://media.example.com/${item.assetKey}`,
+                preview: preview
+                  ? {
+                      id: mediaAssetIds[item.previewAssetKey],
+                      alt: preview.alt,
+                      width: preview.width,
+                      height: preview.height,
+                      url: `https://media.example.com/${item.previewAssetKey}`,
+                    }
+                  : null,
+              }
+            }),
+          }
+        },
+      },
+      plan,
+      mediaAssetIds,
+    })
+
+    assert.deepEqual(result, { serviceCount: 1 })
+  })
+
   it('requests kind-specific signatures and sends correct MIME types without the admin cookie', async () => {
     const { assetRoot } = await createFixtureWorkspace()
     const calls = []
@@ -436,6 +673,12 @@ describe('service importer', () => {
         uploadedTypes.push(options.body.get('file').type)
         return jsonResponse({ asset_id: `provider-${uploadedTypes.length}` })
       }
+      if (url.endsWith('/services?placement=home')) {
+        return jsonResponse({ success: true, data: [{ slug: 'example' }] })
+      }
+      if (url.endsWith('/services/example')) {
+        return jsonResponse({ success: true, data: { slug: 'example' } })
+      }
       if (url.endsWith('/auth/logout')) return jsonResponse({ success: true })
       throw new Error(`Unexpected test request: ${url}`)
     }
@@ -457,11 +700,15 @@ describe('service importer', () => {
         absolutePath: join(assetRoot, asset.filename),
       })
     }
+    assert.deepEqual(await api.listPublicServices('home'), [{ slug: 'example' }])
+    assert.deepEqual(await api.getPublicService('example'), { slug: 'example' })
     await api.logout()
 
     assert.deepEqual(uploadedTypes, ['image/webp', 'video/mp4', 'application/octet-stream'])
     const providerCalls = calls.filter(({ url }) => url.startsWith('https://api.cloudinary.com/'))
     assert.ok(providerCalls.every(({ options }) => options.headers === undefined))
+    const publicCalls = calls.filter(({ url }) => url.includes('/api/v1/services'))
+    assert.ok(publicCalls.every(({ options }) => options.headers.cookie === undefined))
     const signatureCalls = calls.filter(({ url }) => url.endsWith('/admin/media/upload-signature'))
     assert.deepEqual(
       signatureCalls.map(({ options }) => JSON.parse(options.body).kind),

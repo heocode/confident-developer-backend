@@ -241,7 +241,10 @@ export function createCloudinaryMediaProvider(
 
     let resource
     try {
-      resource = await client.api.resource_by_asset_id(providerAssetId, { tags: true })
+      resource = await client.api.resource_by_asset_id(providerAssetId, {
+        tags: true,
+        ...(kind === 'video' ? { media_metadata: true } : {}),
+      })
     } catch (error) {
       if (isNotFoundError(error)) throw createError(404, 'Uploaded media asset was not found')
       throw providerError()

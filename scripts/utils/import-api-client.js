@@ -173,6 +173,19 @@ export function createImportApiClient({ baseUrl, origin, fetchImplementation = f
     createService: services.create,
     updateService: services.update,
 
+    async listPublicServices(placement) {
+      const query = placement ? `?placement=${encodeURIComponent(placement)}` : ''
+      const { body } = await request(`/services${query}`, { authenticated: false })
+      return body.data
+    },
+
+    async getPublicService(slug) {
+      const { body } = await request(`/services/${encodeURIComponent(slug)}`, {
+        authenticated: false,
+      })
+      return body.data
+    },
+
     async getMediaAsset(mediaAssetId) {
       const result = await request(`/admin/media/${mediaAssetId}`, { allowNotFound: true })
       return result?.body.data ?? null
