@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises'
+import { extname } from 'node:path'
 
 export class ImportApiError extends Error {
   constructor(status, message) {
@@ -10,6 +11,22 @@ export class ImportApiError extends Error {
 
 function assert(condition, message) {
   if (!condition) throw new Error(message)
+}
+
+function mediaMimeType(asset) {
+  const format = asset.format ?? extname(asset.filename).slice(1).toLowerCase()
+  const mimeTypes = {
+    png: 'image/png',
+    webp: 'image/webp',
+    jpg: 'image/jpeg',
+    jpeg: 'image/jpeg',
+    avif: 'image/avif',
+    mp4: 'video/mp4',
+    riv: 'application/octet-stream',
+  }
+  const mimeType = mimeTypes[format]
+  assert(mimeType, `Unsupported import media format: ${format}`)
+  return mimeType
 }
 
 function readOptionValue(arguments_, index, name) {
@@ -161,8 +178,11 @@ export function createImportApiClient({ baseUrl, origin, fetchImplementation = f
       return result?.body.data ?? null
     },
 
-    async createUploadDescriptor() {
-      const { body } = await request('/admin/media/upload-signature', { method: 'POST' })
+    async createUploadDescriptor(kind = 'image') {
+      const { body } = await request('/admin/media/upload-signature', {
+        method: 'POST',
+        body: { kind },
+      })
       return body.data
     },
 
@@ -182,7 +202,7 @@ export function createImportApiClient({ baseUrl, origin, fetchImplementation = f
         form.append(field, String(value))
       }
       const contents = await readFile(asset.absolutePath)
-      form.append('file', new Blob([contents], { type: 'image/png' }), asset.filename)
+      form.append('file', new Blob([contents], { type: mediaMimeType(asset) }), asset.filename)
 
       const response = await fetchImplementation(descriptor.upload.url, {
         method: descriptor.upload.method,

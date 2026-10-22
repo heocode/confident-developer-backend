@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, it } from 'node:test'
@@ -8,6 +8,9 @@ import { serviceImportManifest } from '../../scripts/service-import-manifest.js'
 import {
   buildServiceImportPlan,
   isServiceImportPlanPublishable,
+  loadServiceImportState,
+  saveServiceImportState,
+  uploadServiceMediaPlan,
 } from '../../scripts/service-importer.js'
 import { createImportApiClient } from '../../scripts/utils/import-api-client.js'
 
@@ -114,6 +117,56 @@ async function createFixtureWorkspace() {
 }
 
 const inspectVideo = async () => ({ codec: 'h264', width: 720, height: 1280, duration: 29.87 })
+
+function emptyState() {
+  return {
+    version: 1,
+    manifestVersion: 2,
+    assets: {},
+    supersededMediaAssetIds: [],
+    supersededProviderAssetIds: [],
+    completedAt: null,
+  }
+}
+
+function createMediaApiHarness() {
+  const calls = { signatures: [], uploads: [], registrations: [], gets: [], updates: [] }
+  const assetsById = new Map()
+  let sequence = 0
+  const api = {
+    async getMediaAsset(id) {
+      calls.gets.push(id)
+      return assetsById.get(id) ?? null
+    },
+    async createUploadDescriptor(kind) {
+      calls.signatures.push(kind)
+      return { provider: 'cloudinary', kind, upload: { method: 'POST', fields: {} } }
+    },
+    async uploadToProvider(descriptor, asset) {
+      calls.uploads.push({ kind: descriptor.kind, key: asset.key })
+      return { provider: 'cloudinary', providerAssetId: `provider-${asset.key}-${sequence += 1}` }
+    },
+    async registerMediaAsset(payload) {
+      calls.registrations.push(payload)
+      const id = `media-${sequence}`
+      assetsById.set(id, {
+        id,
+        kind: payload.kind,
+        alt: payload.alt,
+        previewAsset: payload.previewAsset ?? null,
+        status: 'active',
+      })
+      return { id }
+    },
+    async updateMediaAsset(id, update) {
+      calls.updates.push({ id, update })
+      const existing = assetsById.get(id)
+      assetsById.set(id, { ...existing, ...update })
+      return assetsById.get(id)
+    },
+  }
+  return { api, calls, assetsById }
+}
 
 describe('service importer', () => {
   it('contains the approved content, project mappings, and independent showcases', () => {
@@ -230,8 +283,128 @@ describe('service importer', () => {
     )
   })
 
-  it('retains the authenticated service HTTP client for the next import stage', async () => {
+  it('stores resumable import state atomically with owner-only permissions', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'service-import-state-'))
+    temporaryDirectories.push(directory)
+    const statePath = join(directory, 'output/service-import-state.json')
+    const state = emptyState()
+    state.assets.example = { sha256: 'abc', kind: 'image' }
+
+    await saveServiceImportState(statePath, state)
+    const metadata = await stat(statePath)
+    const loaded = await loadServiceImportState(statePath, 2)
+
+    assert.equal(metadata.mode & 0o777, 0o600)
+    assert.deepEqual(loaded, state)
+    await assert.rejects(loadServiceImportState(statePath, 3), /manifest version does not match/)
+  })
+
+  it('uploads previews before motion media and reuses registered assets on rerun', async () => {
+    const { directory } = await createFixtureWorkspace()
+    const plan = await buildServiceImportPlan(minimalManifest(), {
+      workspaceRoot: directory,
+      inspectVideo,
+    })
+    const state = emptyState()
+    const statePath = join(directory, 'output/service-import-state.json')
+    const { api, calls } = createMediaApiHarness()
+    const progress = []
+
+    const firstIds = await uploadServiceMediaPlan({
+      api,
+      plan,
+      state,
+      statePath,
+      saveState: async () => {},
+      onProgress: ({ asset, action }) => progress.push({ key: asset.key, action }),
+      now: () => new Date('2026-10-21T12:00:00.000Z'),
+    })
+
+    assert.deepEqual(
+      calls.uploads.map(({ key }) => key),
+      [
+        'example.screen',
+        'example.demo.preview',
+        'example.motion.preview',
+        'example.demo',
+        'example.motion',
+      ],
+    )
+    assert.deepEqual(calls.signatures, ['image', 'image', 'image', 'video', 'animation'])
+    assert.equal(
+      calls.registrations.find(({ kind }) => kind === 'video').previewAsset,
+      firstIds['example.demo.preview'],
+    )
+    assert.equal(
+      calls.registrations.find(({ kind }) => kind === 'animation').previewAsset,
+      firstIds['example.motion.preview'],
+    )
+    assert.equal(state.completedAt, '2026-10-21T12:00:00.000Z')
+    assert.ok(progress.every(({ action }) => action === 'registered'))
+
+    const uploadCount = calls.uploads.length
+    const registrationCount = calls.registrations.length
+    plan.assets.find(({ key }) => key === 'example.screen').alt = 'Updated accessible screen'
+    await uploadServiceMediaPlan({
+      api,
+      plan,
+      state,
+      statePath,
+      saveState: async () => {},
+    })
+
+    assert.equal(calls.uploads.length, uploadCount)
+    assert.equal(calls.registrations.length, registrationCount)
+    assert.deepEqual(calls.updates.at(-1).update, { alt: 'Updated accessible screen' })
+  })
+
+  it('resumes provider uploads and records replaced assets without deleting them', async () => {
+    const { directory } = await createFixtureWorkspace()
+    const plan = await buildServiceImportPlan(minimalManifest(), {
+      workspaceRoot: directory,
+      inspectVideo,
+    })
+    const screen = plan.assets.find(({ key }) => key === 'example.screen')
+    const state = emptyState()
+    state.assets[screen.key] = {
+      sha256: screen.sha256,
+      kind: screen.kind,
+      path: screen.path,
+      provider: 'cloudinary',
+      providerAssetId: 'provider-resumed-screen',
+    }
+    const { api, calls } = createMediaApiHarness()
+
+    await uploadServiceMediaPlan({
+      api,
+      plan,
+      state,
+      statePath: join(directory, 'state.json'),
+      saveState: async () => {},
+    })
+
+    assert.equal(calls.uploads.some(({ key }) => key === screen.key), false)
+    assert.equal(calls.registrations[0].providerAssetId, 'provider-resumed-screen')
+
+    const previous = { ...state.assets[screen.key] }
+    screen.sha256 = 'f'.repeat(64)
+    await uploadServiceMediaPlan({
+      api,
+      plan,
+      state,
+      statePath: join(directory, 'state.json'),
+      saveState: async () => {},
+    })
+
+    assert.ok(state.supersededMediaAssetIds.includes(previous.mediaAssetId))
+    assert.ok(state.supersededProviderAssetIds.includes(previous.providerAssetId))
+    assert.notEqual(state.assets[screen.key].mediaAssetId, previous.mediaAssetId)
+  })
+
+  it('requests kind-specific signatures and sends correct MIME types without the admin cookie', async () => {
+    const { assetRoot } = await createFixtureWorkspace()
     const calls = []
+    const uploadedTypes = []
     const jsonResponse = (body, init) =>
       new Response(JSON.stringify(body), {
         status: init?.status ?? 200,
@@ -245,8 +418,23 @@ describe('service importer', () => {
           { headers: { 'set-cookie': 'cd_admin_session=opaque-token; HttpOnly; Path=/api/v1' } },
         )
       }
-      if (url.endsWith('/admin/services') && options.method === 'GET') {
-        return jsonResponse({ success: true, data: [] })
+      if (url.endsWith('/admin/media/upload-signature')) {
+        const { kind } = JSON.parse(options.body)
+        return jsonResponse({
+          success: true,
+          data: {
+            provider: 'cloudinary',
+            upload: {
+              method: 'POST',
+              url: `https://api.cloudinary.com/${kind}`,
+              fields: { signature: `signed-${kind}` },
+            },
+          },
+        })
+      }
+      if (url.startsWith('https://api.cloudinary.com/')) {
+        uploadedTypes.push(options.body.get('file').type)
+        return jsonResponse({ asset_id: `provider-${uploadedTypes.length}` })
       }
       if (url.endsWith('/auth/logout')) return jsonResponse({ success: true })
       throw new Error(`Unexpected test request: ${url}`)
@@ -258,16 +446,26 @@ describe('service importer', () => {
     })
 
     await api.login({ email: 'owner@example.com', password: 'not-a-real-password' })
-    await api.listServices()
+    for (const asset of [
+      { kind: 'image', format: 'webp', filename: 'demo-preview.webp' },
+      { kind: 'video', format: 'mp4', filename: 'demo.mp4' },
+      { kind: 'animation', format: 'riv', filename: 'motion.riv' },
+    ]) {
+      const descriptor = await api.createUploadDescriptor(asset.kind)
+      await api.uploadToProvider(descriptor, {
+        ...asset,
+        absolutePath: join(assetRoot, asset.filename),
+      })
+    }
     await api.logout()
 
+    assert.deepEqual(uploadedTypes, ['image/webp', 'video/mp4', 'application/octet-stream'])
+    const providerCalls = calls.filter(({ url }) => url.startsWith('https://api.cloudinary.com/'))
+    assert.ok(providerCalls.every(({ options }) => options.headers === undefined))
+    const signatureCalls = calls.filter(({ url }) => url.endsWith('/admin/media/upload-signature'))
     assert.deepEqual(
-      calls.map(({ url, options }) => [url, options.method]),
-      [
-        ['https://api.example.com/api/v1/auth/login', 'POST'],
-        ['https://api.example.com/api/v1/admin/services', 'GET'],
-        ['https://api.example.com/api/v1/auth/logout', 'POST'],
-      ],
+      signatureCalls.map(({ options }) => JSON.parse(options.body).kind),
+      ['image', 'video', 'animation'],
     )
   })
 })

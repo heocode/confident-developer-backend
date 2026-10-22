@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { readFile, stat } from 'node:fs/promises'
-import { basename, extname, isAbsolute, relative, resolve } from 'node:path'
+import { chmod, mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises'
+import { basename, dirname, extname, isAbsolute, relative, resolve } from 'node:path'
 import { promisify } from 'node:util'
 
 import {
@@ -19,6 +19,7 @@ const SERVICE_ASSET_ROOT = 'makets/service-assets'
 const PNG_SIGNATURE = '89504e470d0a1a0a'
 const ASSET_KEY_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 const PROJECT_SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
+const IMPORT_STATE_VERSION = 1
 
 function assert(condition, message) {
   if (!condition) throw new Error(message)
@@ -320,4 +321,191 @@ export function isServiceImportPlanPublishable(plan) {
       service.relatedProjectSlugs.length > 0 &&
       service.showcase.length > 0,
   )
+}
+
+function initialImportState(manifestVersion) {
+  return {
+    version: IMPORT_STATE_VERSION,
+    manifestVersion,
+    assets: {},
+    supersededMediaAssetIds: [],
+    supersededProviderAssetIds: [],
+    completedAt: null,
+  }
+}
+
+export async function loadServiceImportState(statePath, manifestVersion) {
+  try {
+    const state = JSON.parse(await readFile(statePath, 'utf8'))
+    assert(state.version === IMPORT_STATE_VERSION, 'Unsupported service import state version')
+    assert(state.manifestVersion === manifestVersion, 'Service import state manifest version does not match')
+    assert(state.assets && typeof state.assets === 'object', 'Service import state assets are missing')
+    assert(Array.isArray(state.supersededMediaAssetIds), 'Service import state media history is invalid')
+    assert(Array.isArray(state.supersededProviderAssetIds), 'Service import state provider history is invalid')
+    return state
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error
+    return initialImportState(manifestVersion)
+  }
+}
+
+export async function saveServiceImportState(statePath, state) {
+  await mkdir(dirname(statePath), { recursive: true })
+  const temporaryPath = `${statePath}.tmp`
+  await writeFile(temporaryPath, `${JSON.stringify(state, null, 2)}\n`, { mode: 0o600 })
+  await chmod(temporaryPath, 0o600)
+  await rename(temporaryPath, statePath)
+}
+
+function rememberSupersededAsset(state, entry) {
+  if (entry?.mediaAssetId && !state.supersededMediaAssetIds.includes(entry.mediaAssetId)) {
+    state.supersededMediaAssetIds.push(entry.mediaAssetId)
+  }
+  if (entry?.providerAssetId && !state.supersededProviderAssetIds.includes(entry.providerAssetId)) {
+    state.supersededProviderAssetIds.push(entry.providerAssetId)
+  }
+}
+
+function mediaEntry(asset) {
+  return {
+    sha256: asset.sha256,
+    kind: asset.kind,
+    path: asset.path,
+  }
+}
+
+async function ensureServiceMediaAsset({
+  api,
+  asset,
+  previewAssetId,
+  state,
+  statePath,
+  saveState,
+}) {
+  let entry = state.assets[asset.key]
+
+  if (entry && (entry.sha256 !== asset.sha256 || entry.kind !== asset.kind)) {
+    rememberSupersededAsset(state, entry)
+    entry = undefined
+  }
+
+  entry ??= mediaEntry(asset)
+  state.assets[asset.key] = entry
+
+  if (entry.mediaAssetId) {
+    const existing = await api.getMediaAsset(entry.mediaAssetId)
+    const canReuse = existing?.status === 'active' && existing.kind === asset.kind
+
+    if (canReuse) {
+      const update = {}
+      if (existing.alt !== asset.alt) update.alt = asset.alt
+      if (
+        (asset.kind === 'video' || asset.kind === 'animation') &&
+        existing.previewAsset !== previewAssetId
+      ) {
+        update.previewAsset = previewAssetId
+      }
+      if (Object.keys(update).length > 0) await api.updateMediaAsset(entry.mediaAssetId, update)
+
+      Object.assign(entry, mediaEntry(asset), {
+        alt: asset.alt,
+        previewAssetId: previewAssetId ?? null,
+      })
+      await saveState(statePath, state)
+      return { mediaAssetId: entry.mediaAssetId, action: 'reused' }
+    }
+
+    if (existing) {
+      rememberSupersededAsset(state, entry)
+      entry = mediaEntry(asset)
+      state.assets[asset.key] = entry
+    } else {
+      delete entry.mediaAssetId
+    }
+  }
+
+  if (!entry.providerAssetId) {
+    const descriptor = await api.createUploadDescriptor(asset.kind)
+    const uploaded = await api.uploadToProvider(descriptor, asset)
+    Object.assign(entry, {
+      provider: uploaded.provider,
+      providerAssetId: uploaded.providerAssetId,
+      alt: asset.alt,
+      previewAssetId: previewAssetId ?? null,
+    })
+    await saveState(statePath, state)
+  }
+
+  const registered = await api.registerMediaAsset({
+    provider: entry.provider,
+    providerAssetId: entry.providerAssetId,
+    kind: asset.kind,
+    ...(previewAssetId ? { previewAsset: previewAssetId } : {}),
+    alt: asset.alt,
+  })
+  Object.assign(entry, mediaEntry(asset), {
+    mediaAssetId: registered.id,
+    alt: asset.alt,
+    previewAssetId: previewAssetId ?? null,
+  })
+  await saveState(statePath, state)
+  return { mediaAssetId: entry.mediaAssetId, action: 'registered' }
+}
+
+function previewMappings(plan) {
+  return new Map(
+    plan.services.flatMap((service) =>
+      service.showcase
+        .filter(({ previewAssetKey }) => previewAssetKey)
+        .map(({ assetKey, previewAssetKey }) => [assetKey, previewAssetKey]),
+    ),
+  )
+}
+
+export async function uploadServiceMediaPlan({
+  api,
+  plan,
+  state,
+  statePath,
+  saveState = saveServiceImportState,
+  onProgress = () => {},
+  now = () => new Date(),
+}) {
+  const plannedKeys = new Set(plan.assets.map(({ key }) => key))
+  for (const [key, entry] of Object.entries(state.assets)) {
+    if (plannedKeys.has(key)) continue
+    rememberSupersededAsset(state, entry)
+    delete state.assets[key]
+  }
+
+  state.completedAt = null
+  await saveState(statePath, state)
+
+  const previewByAssetKey = previewMappings(plan)
+  const orderedAssets = [
+    ...plan.assets.filter(({ kind }) => kind === 'image'),
+    ...plan.assets.filter(({ kind }) => kind !== 'image'),
+  ]
+  const mediaAssetIds = {}
+
+  for (const asset of orderedAssets) {
+    const previewAssetKey = previewByAssetKey.get(asset.key)
+    const previewAssetId = previewAssetKey ? mediaAssetIds[previewAssetKey] : undefined
+    assert(!previewAssetKey || previewAssetId, `Preview media asset is missing for ${asset.key}`)
+
+    const result = await ensureServiceMediaAsset({
+      api,
+      asset,
+      previewAssetId,
+      state,
+      statePath,
+      saveState,
+    })
+    mediaAssetIds[asset.key] = result.mediaAssetId
+    onProgress({ asset, action: result.action, mediaAssetId: result.mediaAssetId })
+  }
+
+  state.completedAt = now().toISOString()
+  await saveState(statePath, state)
+  return mediaAssetIds
 }

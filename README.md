@@ -46,7 +46,7 @@ npm run admin:create  Interactively provision the single production administrato
 npm run projects:import -- --dry-run  Validate the local project import without network access
 npm run projects:import  Interactively import the approved projects through the Admin API
 npm run services:import -- --dry-run  Validate the local service import without network access
-npm run services:import  Interactively import the approved services through the Admin API
+npm run services:import  Interactively upload or resume approved service media through the Admin API
 ```
 
 ## Assignment references
@@ -212,7 +212,9 @@ Interrupted runs resume from `output/project-import-state.json`, which is ignore
 
 ## Initial service content import
 
-The versioned service manifest in `scripts/service-import-manifest.js` contains the approved Product & UI/UX Design, Mobile Development, Web Development, and Backend & Architecture content: capabilities, tools, ordered related-project slugs, and each service's independently sized ordered showcase. Its ignored source files live under `makets/service-assets`. The offline dry-run validates all 11 showcase files plus four motion previews, including paths, content signatures, dimensions, byte limits, and MP4 metadata; local `ffprobe` is required for the video check. It makes no network requests or external changes. Interactive apply fails before login until the resumable media-upload stage is implemented, so complete local descriptors can never be sent in place of MediaAsset IDs. Credentials are never accepted through command arguments or stored on disk.
+The versioned service manifest in `scripts/service-import-manifest.js` contains the approved Product & UI/UX Design, Mobile Development, Web Development, and Backend & Architecture content: capabilities, tools, ordered related-project slugs, and each service's independently sized ordered showcase. Its ignored source files live under `makets/service-assets`. The offline dry-run validates all 11 showcase files plus four motion previews, including paths, content signatures, dimensions, byte limits, and MP4 metadata; local `ffprobe` is required for the video check. It makes no network requests or external changes.
+
+Interactive apply currently performs the media-only stage. After explicit login and upload confirmations, it obtains kind-specific signatures through the Media API, uploads directly to Cloudinary without the admin cookie, and registers previews before their MP4 or Rive dependants. Progress is atomically stored with owner-only permissions in ignored `output/service-import-state.json`; hashes and separately persisted provider and MediaAsset IDs make interrupted runs resumable. Unchanged active assets are reused, metadata-only changes are patched, and replaced or removed entries are retained in superseded-ID lists for manual lifecycle review rather than deleted. This stage never changes Project or Service documents. Credentials are never accepted through command arguments or stored on disk.
 
 ## Coursework API
 
