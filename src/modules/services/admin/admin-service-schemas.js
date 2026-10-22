@@ -47,7 +47,7 @@ const relatedProjectsSchema = uniqueArray(
   'Related projects cannot contain duplicate IDs',
 )
 const showcaseAssetsSchema = uniqueArray(
-  z.array(objectIdSchema).max(5),
+  z.array(objectIdSchema),
   (id) => id.toLowerCase(),
   'Showcase cannot contain duplicate media IDs',
 )

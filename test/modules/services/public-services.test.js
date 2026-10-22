@@ -303,6 +303,7 @@ describe('public service service', () => {
         const harness = createQueryHarness(
           publicServiceDetail({
             relatedProjects: [...publicServiceDetail().relatedProjects, incompleteProject],
+            showcaseAssets: publicServiceDetail().showcaseAssets.slice(0, 2),
           }),
         )
         queries.push({ filter, ...harness })
@@ -324,14 +325,14 @@ describe('public service service', () => {
     assert.deepEqual(result.relatedProjects.map(({ slug }) => slug), ['unicon'])
     assert.deepEqual(
       result.showcaseAssets.map(({ _id }) => _id.toString()),
-      [11, 12, 13, 14, 15].map((suffix) => `68e7b00000000000000000${suffix}`),
+      [11, 12].map((suffix) => `68e7b00000000000000000${suffix}`),
     )
   })
 
   it('hides missing and incomplete service detail behind the same 404', async () => {
     for (const result of [
       null,
-      publicServiceDetail({ showcaseAssets: publicServiceDetail().showcaseAssets.slice(0, 4) }),
+      publicServiceDetail({ showcaseAssets: [] }),
       publicServiceDetail({ relatedProjects: [] }),
       publicServiceDetail({
         showcaseAssets: publicServiceDetail().showcaseAssets.map((asset, index) =>

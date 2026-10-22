@@ -70,7 +70,7 @@ function hasCompleteDetail(service) {
   return (
     service?.capabilities?.length > 0 &&
     service?.tools?.length > 0 &&
-    service?.showcaseAssets?.length === 5 &&
+    service?.showcaseAssets?.length > 0 &&
     service.showcaseAssets.every(hasMotionPreview)
   )
 }

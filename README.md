@@ -73,7 +73,7 @@ Public service endpoints are:
 - `GET /api/v1/services?placement=home`
 - `GET /api/v1/services/:slug`
 
-They return only published services. The default collection uses Services-page order, while Home placement filters featured services and uses its own configured order. Slug detail composes ordered capabilities and tools, available related-project cards, and exactly five universal showcase media objects with backend-generated delivery URLs and motion previews. Icon, tone, and tool values use stable keys for frontend-owned mappings; the API never returns frontend asset paths, color literals, storage-provider IDs, or lifecycle metadata.
+They return only published services. The default collection uses Services-page order, while Home placement filters featured services and uses its own configured order. Slug detail composes ordered capabilities and tools, available related-project cards, and the service's independently sized ordered showcase using universal media objects with backend-generated delivery URLs and motion previews. Icon, tone, and tool values use stable keys for frontend-owned mappings; the API never returns frontend asset paths, color literals, storage-provider IDs, or lifecycle metadata.
 
 The public GitHub summary endpoint is:
 
@@ -159,7 +159,7 @@ Authenticated service management endpoints are:
 - `PATCH /api/v1/admin/services/:id`
 - `DELETE /api/v1/admin/services/:id`
 
-Service writes accept ordered capabilities, tool `{ key, label }` entries, up to three related project IDs, and five universal showcase media IDs. Drafts may remain incomplete. Publication requires complete detail content, existing related projects, and five active image, video, or animation assets. Supplying an array in PATCH replaces that complete ordered array; omitted fields remain unchanged.
+Service writes accept ordered capabilities, tool `{ key, label }` entries, up to three related project IDs, and an independently sized ordered array of showcase media IDs. Drafts may remain incomplete. Publication requires complete detail content, existing related projects, and at least one active image, video, or animation asset. Supplying an array in PATCH replaces that complete ordered array; omitted fields remain unchanged.
 
 The authenticated GitHub refresh endpoint is:
 

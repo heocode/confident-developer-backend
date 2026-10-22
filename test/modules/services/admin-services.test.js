@@ -13,7 +13,7 @@ const frontendOrigin = 'http://localhost:5173'
 const sessionCookie = 'cd_admin_session=service-session-token'
 const serviceId = '68e7a0000000000000000001'
 const projectId = '68e7a0000000000000000010'
-const showcaseAssetIds = [1, 2, 3, 4, 5].map(
+const showcaseAssetIds = [1, 2, 3, 4, 5, 6, 7].map(
   (suffix) => `68e7a00000000000000000${10 + suffix}`,
 )
 
@@ -273,7 +273,7 @@ function createServiceHarness({
   homeCount = 0,
   existingService = null,
   projectCount = 1,
-  mediaAssetCount = 5,
+  mediaAssetCount = showcaseAssetIds.length,
 } = {}) {
   const state = {
     saved: [],
@@ -401,7 +401,7 @@ describe('admin service business logic', () => {
       return true
     })
 
-    const invalidMedia = createServiceHarness({ mediaAssetCount: 4 })
+    const invalidMedia = createServiceHarness({ mediaAssetCount: showcaseAssetIds.length - 1 })
     await assert.rejects(invalidMedia.service.createService(publishedHomeService()), (error) => {
       assert.equal(error.status, 409)
       assert.equal(

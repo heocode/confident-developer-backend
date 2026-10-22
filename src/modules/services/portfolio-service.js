@@ -26,7 +26,6 @@ export const serviceToolKeys = Object.freeze([
 const MAX_CAPABILITIES = 8
 const MAX_TOOLS = 6
 const MAX_RELATED_PROJECTS = 3
-const SHOWCASE_ASSET_COUNT = 5
 
 const integerValidation = {
   validator: Number.isInteger,
@@ -123,18 +122,10 @@ const portfolioServiceSchema = new mongoose.Schema(
     showcaseAssets: {
       type: [{ type: mongoose.Schema.Types.ObjectId, ref: 'MediaAsset' }],
       default: [],
-      validate: [
-        {
-          validator(values) {
-            return values.length <= SHOWCASE_ASSET_COUNT
-          },
-          message: `Showcase cannot contain more than ${SHOWCASE_ASSET_COUNT} assets`,
-        },
-        {
-          validator: hasUniqueValues,
-          message: 'Showcase cannot contain duplicate media IDs',
-        },
-      ],
+      validate: {
+        validator: hasUniqueValues,
+        message: 'Showcase cannot contain duplicate media IDs',
+      },
     },
     status: { type: String, enum: serviceStatuses, default: 'draft', required: true },
     home: { type: homePlacementSchema, default: () => ({}) },
@@ -168,11 +159,8 @@ portfolioServiceSchema.pre('validate', function validateServicePublication() {
   if (this.relatedProjects.length === 0) {
     this.invalidate('relatedProjects', 'At least one related project is required for published services')
   }
-  if (this.showcaseAssets.length !== SHOWCASE_ASSET_COUNT) {
-    this.invalidate(
-      'showcaseAssets',
-      `Published services require exactly ${SHOWCASE_ASSET_COUNT} showcase assets`,
-    )
+  if (this.showcaseAssets.length === 0) {
+    this.invalidate('showcaseAssets', 'At least one showcase asset is required for published services')
   }
 
   if (!this.publishedAt) this.invalidate('publishedAt', 'Publication date is required for published services')

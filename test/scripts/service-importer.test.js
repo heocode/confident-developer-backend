@@ -33,6 +33,21 @@ describe('service importer', () => {
     assert.equal(isServiceImportPlanPublishable(buildServiceImportPlan(serviceImportManifest)), false)
   })
 
+  it('treats every non-empty independently sized showcase as publishable', () => {
+    const completeService = {
+      capabilities: ['Mobile Apps'],
+      tools: [{ key: 'expo', label: 'Expo' }],
+      relatedProjects: ['unicon'],
+      showcaseAssets: ['feed.png', 'discovery.png'],
+    }
+
+    assert.equal(isServiceImportPlanPublishable({ services: [completeService] }), true)
+    assert.equal(
+      isServiceImportPlanPublishable({ services: [{ ...completeService, showcaseAssets: [] }] }),
+      false,
+    )
+  })
+
   it('rejects duplicate slugs and display orders', () => {
     const duplicateSlug = structuredClone(serviceImportManifest)
     duplicateSlug.services[1].slug = duplicateSlug.services[0].slug

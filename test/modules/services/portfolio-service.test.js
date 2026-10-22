@@ -4,7 +4,7 @@ import { describe, it } from 'node:test'
 import { PortfolioService } from '../../../src/modules/services/portfolio-service.js'
 
 const projectId = '68e7a0000000000000000010'
-const showcaseAssetIds = [1, 2, 3, 4, 5].map(
+const showcaseAssetIds = [1, 2, 3, 4, 5, 6, 7].map(
   (suffix) => `68e7a00000000000000000${10 + suffix}`,
 )
 
@@ -65,6 +65,17 @@ describe('PortfolioService model', () => {
     assert.deepEqual(service.home.toObject(), { featured: true, order: 2 })
   })
 
+  it('accepts independently sized non-empty showcases for published services', async () => {
+    const singleAssetService = publishedService({ showcaseAssets: [showcaseAssetIds[0]] })
+    const largerShowcaseService = publishedService()
+
+    await singleAssetService.validate()
+    await largerShowcaseService.validate()
+
+    assert.equal(singleAssetService.showcaseAssets.length, 1)
+    assert.equal(largerShowcaseService.showcaseAssets.length, 7)
+  })
+
   it('requires complete public content before publication', async () => {
     const service = new PortfolioService({
       slug: 'incomplete',
@@ -86,7 +97,7 @@ describe('PortfolioService model', () => {
     })
   })
 
-  it('rejects duplicate ordered content and incomplete showcase media', async () => {
+  it('rejects duplicate ordered content', async () => {
     const service = publishedService({
       capabilities: ['API Integration', 'api integration'],
       tools: [
@@ -94,7 +105,7 @@ describe('PortfolioService model', () => {
         { key: 'react', label: 'React duplicate' },
       ],
       relatedProjects: [projectId, projectId],
-      showcaseAssets: showcaseAssetIds.slice(0, 4),
+      showcaseAssets: [showcaseAssetIds[0], showcaseAssetIds[0]],
     })
 
     await assert.rejects(service.validate(), (error) => {

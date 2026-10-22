@@ -47,6 +47,6 @@ export function isServiceImportPlanPublishable(plan) {
       service.capabilities?.length > 0 &&
       service.tools?.length > 0 &&
       service.relatedProjects?.length > 0 &&
-      service.showcaseAssets?.length === 5,
+      service.showcaseAssets?.length > 0,
   )
 }
