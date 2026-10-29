@@ -132,7 +132,7 @@ Current compatibility decisions:
 
 - Treat coursework fields as the minimum schema rather than the complete product model.
 - Put all new production endpoints under `/api/v1`; keep `GET /api/health` unversioned for hosting health checks.
-- Host the frontend on Vercel and proxy relative `/api` requests to the Render backend with an external rewrite. Browser code must not call the `onrender.com` origin directly. Mirror the relative `/api` topology with the Vite development proxy in the frontend repository.
+- Host the frontend as a Render Static Site and proxy relative `/api` requests to a separate Render Node Web Service with an external rewrite. Browser code must not call the `onrender.com` origin directly. Mirror the relative `/api` topology with the Vite development proxy in the frontend repository.
 - Treat the unversioned coursework CRUD as a frozen assignment contract, not as the production security model. Remove it from `main` or place it behind an explicit development-only compatibility switch once production replacements exist.
 - All portfolio content must be manageable through the authenticated admin API. There is one owner administrator, no public signup, and no production user-management CRUD.
 - Production projects use their own collection and require configurable Home selection, primary-project selection, separate Home/Projects-page ordering, individual theme colors, logos, Home previews, screenshots, a displayed position, date ranges, build breakdowns, and external links.
@@ -165,7 +165,7 @@ Current project persistence decisions:
 - Public project reads are available at `GET /api/v1/projects`, `GET /api/v1/projects?placement=home`, and `GET /api/v1/projects/:slug`. They expose only published projects through an explicit public serializer; draft, archived, media-incomplete, and unknown detail records are indistinguishable `404` responses.
 - The public Projects list sorts by `projectsPageOrder` then `_id`. Home placement requires `home.featured: true` and sorts by `home.order` then `_id`. The common list representation includes links and Home card data; detail adds `scope` and ordered screenshots.
 - Public project routes accept no MongoDB ID. Query and slug input are strict, and unknown query parameters are rejected.
-- Successful public project responses send browser-revalidating `Cache-Control` plus `CDN-Cache-Control` for a 60-second shared-cache lifetime and five-minute stale-while-revalidate window. Error responses are not cacheable. The frontend deployment must verify external-rewrite caching and explicitly opt in if it predates Vercel's default external-origin caching behavior.
+- Successful public project responses send browser-revalidating `Cache-Control` plus `CDN-Cache-Control` for a 60-second shared-cache lifetime and five-minute stale-while-revalidate window. Error responses are not cacheable. The frontend deployment must verify actual external-rewrite caching on Render; headers alone do not prove that the hosting proxy caches public API responses.
 - Initial Unicon, SuperSauced, and DomSot content is defined in `scripts/project-import-manifest.js`; its PNG source files live under the ignored `makets/project-assets` directory. `npm run projects:import -- --dry-run` validates the complete local plan without credentials, network requests, or external writes.
 - The interactive `npm run projects:import` command uses only the existing Auth, Media, and Projects HTTP APIs. It never bypasses domain validation with direct MongoDB or provider writes, never accepts credentials through arguments or environment variables, warns that login rotates the existing administrator session, and requires separate confirmations for content changes and publication.
 - Import progress is stored in the ignored owner-only `output/project-import-state.json`. Content hashes and media IDs permit safe resume, existing nested project IDs remain stable when their semantic item matches, and superseded media is recorded for manual lifecycle review rather than deleted automatically.
@@ -287,8 +287,8 @@ Current media decisions:
 - Validate and sanitize all untrusted input on the server.
 - Protect every `/api/v1/admin/*` route with authorization. Do not launch production with public administrative create, update, or delete operations.
 - Use a separately modeled `AdminUser`; never accept a client-controlled role and never provide a public admin bootstrap or signup endpoint.
-- Use revocable opaque admin sessions in host-only `HttpOnly` cookies and store only session-token hashes. Production cookies use `Secure` and `SameSite=Lax` through the same-origin Vercel rewrite; do not set `Domain`. Expire sessions with a TTL index and verify exact approved origins for unsafe cookie-authenticated requests.
-- Send `Cache-Control: private, no-store` on authentication and admin responses. Do not enable Vercel caching for session-specific routes.
+- Use revocable opaque admin sessions in host-only `HttpOnly` cookies and store only session-token hashes. Production cookies use `Secure` and `SameSite=Lax` through the same-origin Render rewrite; do not set `Domain`. Expire sessions with a TTL index and verify exact approved origins for unsafe cookie-authenticated requests.
+- Send `Cache-Control: private, no-store` on authentication and admin responses. Do not enable public proxy caching for session-specific routes.
 - Provision the initial administrator with a local one-time script against Atlas, without placing the password in source code, command history, or logs.
 - Public submission endpoints require rate limiting, payload limits, spam protection, and a moderation strategy.
 - Restrict CORS to configured frontend origins.
@@ -316,6 +316,8 @@ Current authentication decisions:
 - Tests that exercise the frozen coursework contract must enable its routers explicitly when constructing the Express application.
 
 ## Git Workflow
+
+- GitHub Actions runs lint and isolated Node tests on pushes and pull requests to `main`, without live database or email credentials. Production Render auto-deploys must use **After CI Checks Pass**; keep the frozen grading service on `assignment-2`.
 
 - The submitted coursework is frozen at tag `assignment-2-submission` and branch `assignment-2`. Production work continues on `main`; keep the grading Render service pinned to `assignment-2`.
 - Before every commit, review and update `AGENTS.md` so it reflects current architecture, API behavior, workflow requirements, and known constraints.

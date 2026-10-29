@@ -50,22 +50,22 @@ The frozen Assignment 2 compatibility layer is isolated under `src/coursework`, 
 
 ## Deployment Topology
 
-The production frontend is hosted on Vercel and the production backend is hosted separately on Render. Browser code uses relative `/api/v1/...` URLs and does not embed or call the Render origin directly.
+The production deployment target is a Render Static Site for the frontend and a separate Render Node Web Service for the backend. Browser code uses relative `/api/v1/...` URLs and does not embed or call the Render origin directly.
 
-Vercel uses an external rewrite as a reverse proxy while preserving the browser-visible URL:
+The Render Static Site uses an external rewrite as a reverse proxy while preserving the browser-visible URL:
 
 ```text
 Browser: https://<frontend-host>/api/v1/...
                           |
                           v
-Vercel external rewrite: https://<backend-host>/api/v1/...
+Render frontend external rewrite: https://<backend-host>/api/v1/...
 ```
 
-This makes the API session first-party from the browser's perspective and avoids depending on third-party cookies between `vercel.app` and `onrender.com`. The frontend repository owns the Vercel rewrite configuration. Local Vite development should mirror this topology by proxying `/api` to `http://localhost:3000`.
+This makes the API session first-party from the browser's perspective and avoids depending on third-party cookies between separate frontend and backend origins. The frontend repository owns the Render rewrite configuration. Local Vite development should mirror this topology by proxying `/api` to `http://localhost:3000`.
 
 Session cookies do not set a `Domain` attribute. Production admin cookies use `HttpOnly`, `Secure`, `SameSite=Lax`, and a restrictive path. Development may disable `Secure` only for local HTTP. Authenticated frontend requests continue to use relative URLs.
 
-Authentication and admin responses must send `Cache-Control: private, no-store` so neither browsers nor the Vercel proxy cache session-specific data. Public GET caching is configured separately and deliberately. Vercel preview origins do not receive admin access automatically; each permitted origin must be explicitly configured.
+Authentication and admin responses must send `Cache-Control: private, no-store` so neither browsers nor the frontend proxy cache session-specific data. Public GET caching is configured separately and deliberately. Preview origins do not receive admin access automatically; each permitted origin must be explicitly configured.
 
 Render proxy trust and client-IP behavior must be verified in the deployed topology before relying on IP-based controls. Rate limiting is defense in depth and must not be the only authorization boundary.
 
@@ -152,7 +152,7 @@ GET /api/v1/posts/:slug
 
 Only published projects, services, posts, and approved references are returned. List responses expose only the fields needed by their cards; detail routes may expose richer public fields.
 
-Successful public project, service, GitHub summary, and resume redirect responses send `Cache-Control: public, max-age=0, s-maxage=60, stale-while-revalidate=300` and `CDN-Cache-Control: max-age=60, stale-while-revalidate=300`. The Profile Post uses a shorter 15-second shared lifetime and 30-second stale window so counter and content changes converge sooner. Express sets these headers only after successful service and serialization work, so validation, not-found, availability, and server errors are not cached. The dedicated CDN header makes caching explicit for Vercel external rewrites; an existing Vercel project must still verify or enable external-origin caching in its CDN configuration. Content changes are eventually visible within the bounded cache window rather than instantly purged; targeted Vercel cache invalidation can be added later if immediate emergency removal becomes a product requirement.
+Successful public project, service, GitHub summary, and resume redirect responses send `Cache-Control: public, max-age=0, s-maxage=60, stale-while-revalidate=300` and `CDN-Cache-Control: max-age=60, stale-while-revalidate=300`. The Profile Post uses a shorter 15-second shared lifetime and 30-second stale window so counter and content changes converge sooner. Express sets these headers only after successful service and serialization work, so validation, not-found, availability, and server errors are not cached. Actual shared caching of external rewrites must be verified on the chosen Render hosting configuration; these headers alone do not prove that an intermediary caches the API. Where shared caching is enabled, content changes are eventually visible within the bounded cache window rather than instantly purged. Revisit invalidation if immediate emergency removal becomes a product requirement.
 
 ### Public write routes
 
@@ -218,7 +218,7 @@ GET  /api/v1/auth/session
 
 The portfolio uses a single-owner admin model; it has no public signup or user-management API. The initial admin is provisioned by a local one-time script against Atlas, never through a public bootstrap route.
 
-Authentication uses a 256-bit opaque session token in a host-only `HttpOnly` cookie. Production cookies are `Secure` and `SameSite=Lax` because requests reach the API through the same-origin Vercel rewrite. Only a SHA-256 hash of the token is stored in an `AdminSession` document. Login revokes previous sessions for the single administrator and creates one seven-day session. Sessions are revocable and expire automatically through a TTL index. Unsafe cookie-authenticated requests require an exact approved `Origin`.
+Authentication uses a 256-bit opaque session token in a host-only `HttpOnly` cookie. Production cookies are `Secure` and `SameSite=Lax` because requests reach the API through the same-origin Render rewrite. Only a SHA-256 hash of the token is stored in an `AdminSession` document. Login revokes previous sessions for the single administrator and creates one seven-day session. Sessions are revocable and expire automatically through a TTL index. Unsafe cookie-authenticated requests require an exact approved `Origin`.
 
 Login is limited to five failed attempts per IP in 15 minutes. Successful login attempts do not consume the failure allowance. The initial in-memory limiter is suitable for one application process; a shared store is required before horizontal scaling.
 
@@ -485,7 +485,7 @@ Mongoose validation remains a persistence safeguard, not the only API validation
 ## External Services and Failure Behavior
 
 - MongoDB Atlas is the source of truth and uses the `portfolio` database.
-- Vercel hosts the frontend and proxies relative `/api` requests to Render through an external rewrite.
+- A Render Static Site hosts the frontend and rewrites relative `/api` requests to the separate Render backend.
 - Render hosts the backend; its direct health endpoint remains available for platform monitoring.
 - Cloudinary stores media binaries; MongoDB stores their metadata and relationships.
 - GitHub is an eventually consistent enrichment source; stale cached data remains usable during GitHub outages.

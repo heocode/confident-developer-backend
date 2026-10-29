@@ -35,6 +35,16 @@ The coursework backend is deployed on Render:
 
 The free Render instance may require a short cold start after a period of inactivity.
 
+### Production continuous delivery
+
+The production target is a separate Render Node Web Service on `main`, paired with a Render Static Site for the frontend. Preserve the existing coursework service on `assignment-2`. The production service and its domain/environment still require configuration.
+
+GitHub Actions in `.github/workflows/ci.yml` runs `npm ci`, lint and isolated Node tests for pushes and pull requests to `main`; no live Atlas, Turnstile or email credentials are needed in CI. Configure Render auto-deploys as **After CI Checks Pass**. A pushed passing commit updates its linked service; frontend and backend deploy independently.
+
+Use Node.js 22 from `.nvmrc`, build command `npm ci`, start command `npm start` and health path `/api/health`. Set `NODE_ENV=production`, exact HTTPS `CLIENT_ORIGINS`, the intended `MONGODB_URI` selecting `portfolio`, and `ENABLE_COURSEWORK_API=false`. Keep secrets in Render. Browser requests continue through the frontend's relative `/api` rewrite; verify cookies, trusted Origin and proxy/client-IP behavior on the deployed topology.
+
+Use real matching Turnstile credentials: test secrets are rejected in production. If enabling email delivery against an existing database, review pending outbox jobs first because starting a configured worker can dispatch them. Do not run imports, admin provisioning or real Contact/References submissions from CI or deploy hooks.
+
 ## Commands
 
 ```text
